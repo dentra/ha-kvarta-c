@@ -24,12 +24,7 @@ from homeassistant.const import (
     ENERGY_KILO_WATT_HOUR,
 )
 
-from .const import (
-    CONF_DIAGNOSTIC_SENSORS,
-    CONF_UPDATE_INTERVAL,
-    DOMAIN,
-    UPDATE_INTERVAL,
-)
+from .const import CONF_DIAGNOSTIC_SENSORS, CONF_UPDATE_INTERVAL, DOMAIN
 
 from .kvartac_api import KvartaCApi
 from . import KvartaCDataUpdateCoordinator

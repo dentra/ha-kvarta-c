@@ -41,7 +41,9 @@ class KvartaCApi:
         self._session = session
         self.organisation_id = organisation_id
         self.account_id = account_id
-        self.password = organisation_id if password is None else password
+        self.password = (
+            organisation_id if password is None or password == "" else password
+        )
         self.account = ""
         self.organisation = ""
         self.prev_save_date = ""
