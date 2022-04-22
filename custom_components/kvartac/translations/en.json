@@ -1,0 +1,35 @@
+{
+    "config": {
+        "error": {
+            "cant_connect": "Can't connect to server",
+            "invalid_acc_id": "Invalid account",
+            "invalid_org_id": "Invalid organisation",
+            "api_error": "API Error occuried"
+        },
+        "abort": {
+            "already_configured": "Account is already configured"
+        },
+        "step": {
+            "user": {
+                "title": "New Kvarta-C connection",
+                "data": {
+                    "org_id": "Organisation",
+                    "acc_id": "Account",
+                    "passwd": "Password"
+                },
+                "description": "Enter account information"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "diagnostic_sensors": "Sensors in diagnostic mode",
+                    "update_interval": "Update interval (seconds)"
+                },
+                "description": "{acc_info}\n{org_info}"
+            }
+        }
+    }
+}
