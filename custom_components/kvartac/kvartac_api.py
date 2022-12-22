@@ -21,7 +21,7 @@ class Counter(TypedDict):
 class KvartaCApi:
     """Kvarta-C API access implementation"""
 
-    BASE_URL: Final = "http://www.kvarta-c.ru/voda.php"
+    BASE_URL: Final = "https://www.kvarta-c.ru/voda.php"
     _LOGIN_URL: Final = BASE_URL + "?action=login"
     _TENANT_URL: Final = BASE_URL + "?action=tenant"
 
@@ -155,7 +155,7 @@ class KvartaCApi:
             raise ApiError
 
         content = await resp.text()
-
+        _LOGGER.debug(content)
         res = self._parse_html(content)
         if not res:
             raise ApiAuthError
