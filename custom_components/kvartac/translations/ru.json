@@ -4,7 +4,8 @@
             "cant_connect": "Неудается подключится к серверу",
             "invalid_acc_id": "Неверный лицевой счет",
             "invalid_org_id": "Неверная организация",
-            "api_error": "Ошибка API"
+            "api_error": "Ошибка API",
+            "invalid_auth": "Неправильные логин/пароль"
         },
         "abort": {
             "already_configured": "Такой аккаунт уже существует"
