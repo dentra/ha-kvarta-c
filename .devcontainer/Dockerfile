@@ -1,7 +1,7 @@
 # FROM homeassistant/home-assistant:latest
-FROM mcr.microsoft.com/vscode/devcontainers/python:0-3.9
+FROM mcr.microsoft.com/vscode/devcontainers/python:0-3.10
 
-ARG esphome_version
+ARG hass_version
 ARG apt_deps
 ARG pip_deps
 
@@ -25,7 +25,7 @@ RUN echo "alias ll='ls -l'" >> /etc/bash.bashrc \
 
 RUN mkdir /srv/homeassistant \
  && virtualenv -p python3 /srv/homeassistant \
- && /srv/homeassistant/bin/pip3 --disable-pip-version-check --no-cache-dir install --upgrade homeassistant black Pyright pylint $pip_deps \
+ && /srv/homeassistant/bin/pip3 --disable-pip-version-check --no-cache-dir install homeassistant==$hass_version black Pyright pylint $pip_deps \
  && rm -rf /tmp/pip-tmp \
  && chown -R vscode:vscode /srv/homeassistant
 
