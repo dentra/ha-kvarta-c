@@ -135,17 +135,16 @@ class KvartaCApi:
         return True
 
     async def _async_login(self) -> None:
-        resp = await self._session.post(
-            self._LOGIN_URL,
-            data={
-                "action": "login",
-                "subaction": "enter",
-                "usertype": "tenant",
-                "tsgid": self.organisation_id,
-                "accountid": self.account_id,
-                "password": self.password,
-            },
-        )
+        data = {
+            "action": "login",
+            "subaction": "enter",
+            "usertype": "tenant",
+            "tsgid": self.organisation_id,
+            "accountid": self.account_id,
+            "password": self.password,
+        }
+        _LOGGER.debug("POST %s: %s", self._LOGIN_URL, str(data))
+        resp = await self._session.post(self._LOGIN_URL, data=data)
         if resp.status != 200:
             raise ApiError
 
@@ -155,9 +154,9 @@ class KvartaCApi:
             raise ApiError
 
         content = await resp.text()
-        _LOGGER.debug(content)
         res = self._parse_html(content)
         if not res:
+            _LOGGER.error(content)
             raise ApiAuthError
 
     async def _async_update(self, counter_id: str, value: int):
