@@ -1,6 +1,7 @@
 """Kvarta-C API"""
 import logging
 from typing import Final, TypedDict
+import re
 
 from homeassistant import exceptions
 
@@ -53,7 +54,7 @@ class KvartaCApi:
         _LOGGER.debug("Parsing account")
 
         account_str = "Номер лицевого счета:"
-        text = links[1].get_text().strip()
+        text = re.sub("\\s{2,}", " ", links[1].get_text().strip().replace("\r","").replace("\n"," "))
         if not text.startswith(account_str):
             _LOGGER.warning("Can't parse account, data: %s", text)
             return
@@ -62,29 +63,33 @@ class KvartaCApi:
         # TODO check with self.account_id
         _LOGGER.debug("Account ID: %s", acc_id)
 
-        self.account = links[2].get_text().strip()
+        self.account = re.sub("\\s{2,}", " ", links[2].get_text().strip())
         _LOGGER.debug("Account: %s", self.account)
 
-        self.organisation = links[3].get_text().replace('" ', '"').replace('",', '"')
+        self.organisation = re.sub("\\s{2,}", " ", links[3].get_text().replace('" ', '"').replace('",', '"'))
         _LOGGER.debug("Organisation: %s", self.organisation)
 
-        self.prev_save_date = links[5].find("b").get_text().strip()
+        self.prev_save_date = links[4].find("b").get_text().strip()
         _LOGGER.debug("Previous save date: %s", self.prev_save_date)
 
     def _parse_counter(self, links: ResultSet[Tag], service: str, start_index: int):
-        _LOGGER.debug("Parsing counter for %s at %d", service, start_index)
-        item = links[start_index + 1]
-        counter = item.find("input")
+        _LOGGER.debug("Parsing counter for \"%s\" at %d", service, start_index)
+
+        counter = links[start_index + 1].find("input")
         if not counter:
             _LOGGER.debug("No counter found")
             return
         counter = counter.attrs["name"]
 
-        value = int(links[start_index].get_text().strip())
+        value = links[start_index].get_text().strip()
+        if value.find(".") != -1:
+            value = float(value)
+        else:
+            value = int(value)
 
-        cid = item.find("font")
+        cid = links[start_index + 2].find("font")
         if cid is not None:
-            cid = cid.get_text()
+            cid = cid.get_text().strip()
             if cid.startswith("№"):
                 cid = cid[1:]
             cid = cid.strip()
@@ -97,7 +102,7 @@ class KvartaCApi:
             self.COUNTER_SERVICE: service,
         }
 
-        _LOGGER.debug("Counter %s[%s]=%d", counter, cid, value)
+        _LOGGER.debug("Counter %s[%s]=%s", counter, cid, value)
 
     def _parse_service(self, links: ResultSet[Tag], service_id: int, start_index: int):
         _LOGGER.debug("Parsing service %d", service_id)
@@ -107,9 +112,11 @@ class KvartaCApi:
 
         start_index += 1
 
-        for _ in range(4):
-            self._parse_counter(links, service, start_index)
-            start_index += 2
+        # for _ in range(4):
+        #     self._parse_counter(links, service, start_index)
+        #     start_index += 2
+        # после обновления от 04.03.2023, теперь один счетчик на строку таблицы
+        self._parse_counter(links, service, start_index)
 
     def _parse_html(self, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
@@ -129,8 +136,13 @@ class KvartaCApi:
                 service_count = max(service_count, service_no)
         _LOGGER.debug("Found %d services", service_count)
 
+        # i = 0
+        # for link in links:
+        #     print("***** link", i, link)
+        #     i = i + 1
+
         for i in range(service_count):
-            self._parse_service(links, i + 1, 27 + (i * 10))
+            self._parse_service(links, i + 1, 11 + (i * 5))
 
         return True
 
