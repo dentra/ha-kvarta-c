@@ -1,27 +1,18 @@
 """Config flow for integration."""
 from __future__ import annotations
 import logging
-from typing import Any, Final
+from typing import Any, Final, Dict
+from datetime import timedelta
 
 import voluptuous as vol
 
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import selector
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .kvartac_api import KvartaCApi, ApiAuthError, ApiError
-
-from .const import (
-    DOMAIN,
-    CONF_ACC_ID,
-    CONF_ORG_ID,
-    CONF_PASSWD,
-    CONF_UPDATE_INTERVAL,
-    CONF_DIAGNOSTIC_SENSORS,
-    HASS_API,
-    UPDATE_INTERVAL,
-)
+from . import const, kvartac_api, KvartaCDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,29 +21,43 @@ DEMO_ORG_ID: Final = "0000"
 DEMO_PASSWD: Final = "demo"
 
 
+def required(
+    key: str, options: Dict[str, Any], default: Any | None = None
+) -> vol.Required:
+    """Return vol.Required."""
+    if isinstance(options, dict) and key in options:
+        suggested_value = options[key]
+    elif default is not None:
+        suggested_value = default
+    else:
+        return vol.Required(key)
+    return vol.Required(key, description={"suggested_value": suggested_value})
+
+
 async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
 
-    if len(data[CONF_ORG_ID]) != 4:
+    if len(data[const.CONF_ORG_ID]) != 4:
         raise InvalidOrgId
 
-    if len(data[CONF_ACC_ID]) == 0:
+    if len(data[const.CONF_ACC_ID]) == 0:
         raise InvalidAccId
 
+    # check for demo account
     if (
-        data[CONF_ORG_ID] == DEMO_ORG_ID
-        or data[CONF_ACC_ID] == DEMO_ACC_ID
-        or data[CONF_PASSWD] == DEMO_PASSWD
+        data[const.CONF_ORG_ID] == DEMO_ORG_ID
+        or data[const.CONF_ACC_ID] == DEMO_ACC_ID
+        or data[const.CONF_PASSWD] == DEMO_PASSWD
     ):
-        data[CONF_ORG_ID] = DEMO_ORG_ID
-        data[CONF_ACC_ID] = DEMO_ACC_ID
-        data[CONF_PASSWD] = DEMO_PASSWD
+        data[const.CONF_ORG_ID] = DEMO_ORG_ID
+        data[const.CONF_ACC_ID] = DEMO_ACC_ID
+        data[const.CONF_PASSWD] = DEMO_PASSWD
 
-    api = KvartaCApi(
+    api = kvartac_api.KvartaCApi(
         async_get_clientsession(hass),
-        data[CONF_ORG_ID],
-        data[CONF_ACC_ID],
-        data[CONF_PASSWD],
+        data[const.CONF_ORG_ID],
+        data[const.CONF_ACC_ID],
+        data[const.CONF_PASSWD],
     )
 
     await api.async_fetch()
@@ -60,7 +65,7 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
     return {"title": api.account, "api": api}
 
 
-class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
     """Handle a config flow for integration."""
 
     VERSION = 1
@@ -73,11 +78,9 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 info = await validate_input(self.hass, user_input)
-                api: KvartaCApi = info["api"]
-                await self.async_set_unique_id(f"{DOMAIN}_{api.uid}")
+                api: kvartac_api.KvartaCApi = info["api"]
+                await self.async_set_unique_id(f"{const.DOMAIN}_{api.uid}")
                 self._abort_if_unique_id_configured()
-
-                self.hass.data.setdefault(DOMAIN, {})[HASS_API] = api
 
                 return self.async_create_entry(title=info["title"], data=user_input)
             except CannotConnect:
@@ -86,30 +89,37 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_acc_id"
             except InvalidOrgId:
                 errors["base"] = "invalid_org_id"
-            except ApiAuthError:
+            except kvartac_api.ApiAuthError:
                 errors["base"] = "invalid_auth"
-            except ApiError:
+            except kvartac_api.ApiError:
                 errors["base"] = "api_error"
         else:
             user_input = {
-                CONF_ORG_ID: "",
-                CONF_ACC_ID: "",
-                CONF_PASSWD: "",
+                const.CONF_ORG_ID: "",
+                const.CONF_ACC_ID: "",
+                const.CONF_PASSWD: "",
             }
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        CONF_ORG_ID, default=user_input.get(CONF_ORG_ID, "")
-                    ): cv.string,
-                    vol.Required(
-                        CONF_ACC_ID, default=user_input.get(CONF_ACC_ID, "")
-                    ): cv.string,
-                    vol.Optional(
-                        CONF_PASSWD, default=user_input.get(CONF_PASSWD, "")
-                    ): cv.string,
+                    required(const.CONF_ORG_ID, user_input): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT
+                        ),
+                    ),
+                    required(const.CONF_ACC_ID, user_input): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.TEXT
+                        ),
+                    ),
+                    required(const.CONF_PASSWD, user_input): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                            autocomplete="current-password",
+                        )
+                    ),
                 },
             ),
             errors=errors,
@@ -136,29 +146,41 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        api: KvartaCApi = self.hass.data[DOMAIN][self.config_entry.entry_id].api
+        coordinator: KvartaCDataUpdateCoordinator = self.hass.data[const.DOMAIN][
+            self.config_entry.entry_id
+        ]
+
+        def timedelta_to_dict(delta: timedelta) -> dict:
+            hours, seconds = divmod(delta.seconds, 3600)
+            minutes, seconds = divmod(seconds, 60)
+            return {
+                "days": delta.days,
+                "hours": hours,
+                "minutes": minutes,
+                "seconds": seconds,
+            }
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    vol.Optional(
+                        const.CONF_UPDATE_INTERVAL,
+                        default=timedelta_to_dict(coordinator.update_interval),
+                    ): selector.DurationSelector(
+                        selector.DurationSelectorConfig(enable_day=True),
+                    ),
                     vol.Required(
-                        CONF_UPDATE_INTERVAL,
+                        const.CONF_DIAGNOSTIC_SENSORS,
                         default=self.config_entry.options.get(
-                            CONF_UPDATE_INTERVAL, UPDATE_INTERVAL.total_seconds
-                        ),
-                    ): cv.positive_int,
-                    vol.Required(
-                        CONF_DIAGNOSTIC_SENSORS,
-                        default=self.config_entry.options.get(
-                            CONF_DIAGNOSTIC_SENSORS, True
+                            const.CONF_DIAGNOSTIC_SENSORS, True
                         ),
                     ): cv.boolean,
                 }
             ),
             description_placeholders={
-                "acc_info": api.account,
-                "org_info": api.organisation,
+                "acc_info": coordinator.api.account,
+                "org_info": coordinator.api.organisation,
             },
         )
 

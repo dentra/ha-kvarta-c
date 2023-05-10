@@ -27,7 +27,7 @@
             "init": {
                 "data": {
                     "diagnostic_sensors": "Sensors in diagnostic mode",
-                    "update_interval": "Update interval (seconds)"
+                    "update_interval": "Update interval"
                 },
                 "description": "{acc_info}\n{org_info}"
             }

@@ -27,7 +27,7 @@
             "init": {
                 "data": {
                     "diagnostic_sensors": "Сенсоры в диагностическом режиме",
-                    "update_interval": "Интервал обновления (секунды)"
+                    "update_interval": "Интервал обновления"
                 },
                 "description": "{acc_info}\n{org_info}"
             }

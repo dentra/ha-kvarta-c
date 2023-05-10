@@ -25,12 +25,11 @@ from homeassistant.helpers.dispatcher import (
 from .kvartac_api import KvartaCApi, ApiError, ApiAuthError
 from .const import (
     CONF_UPDATE_INTERVAL,
-    HASS_API,
     DOMAIN,
     CONF_ACC_ID,
     CONF_ORG_ID,
     CONF_PASSWD,
-    UPDATE_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,34 +40,25 @@ PLATFORMS: Final = ["sensor"]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up from a config entry."""
+
+    _LOGGER.debug(
+        "Setup %s (%s %s)",
+        entry.title,
+        entry.data[CONF_ORG_ID],
+        entry.data[CONF_ACC_ID],
+    )
+
     hass.data.setdefault(DOMAIN, {})
 
-    api: KvartaCApi = None
-    if HASS_API in hass.data[DOMAIN]:
-        api = hass.data[DOMAIN][HASS_API]
-        if (
-            api.organisation_id != entry.data[CONF_ORG_ID]
-            or api.account_id != entry.data[CONF_ACC_ID]
-        ):
-            api = None
-
-    if not api:
-        api = KvartaCApi(
-            async_get_clientsession(hass),
-            entry.data[CONF_ORG_ID],
-            entry.data[CONF_ACC_ID],
-            entry.data[CONF_PASSWD],
-        )
-        await api.async_fetch()
-
-    coordinator = KvartaCDataUpdateCoordinator(hass, api)
+    coordinator = KvartaCDataUpdateCoordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
+    await coordinator.async_config_entry_first_refresh()
 
     # add options handler
     if not entry.update_listeners:
         entry.add_update_listener(async_update_options)
 
-    hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
@@ -97,9 +87,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
     """Kvarta-C data update coordinator."""
 
-    def __init__(self, hass: HomeAssistant, api: KvartaCApi):
-        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=UPDATE_INTERVAL)
-        self.api = api
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=cv.time_period(
+                entry.options.get(
+                    CONF_UPDATE_INTERVAL,
+                    DEFAULT_UPDATE_INTERVAL.total_seconds(),
+                )
+            ),
+        )
+        _LOGGER.debug("Update interval is %s", self.update_interval)
+        self.api = KvartaCApi(
+            async_get_clientsession(hass),
+            entry.data[CONF_ORG_ID],
+            entry.data[CONF_ACC_ID],
+            entry.data[CONF_PASSWD],
+        )
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
@@ -107,7 +113,8 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
             # asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
             async with async_timeout.timeout(10):
-                return await self.api.async_fetch()
+                await self.api.async_fetch()
+                return True
         except ApiAuthError as err:
             # Raising ConfigEntryAuthFailed will cancel future updates
             # and start a config flow with SOURCE_REAUTH (async_step_reauth)

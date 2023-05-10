@@ -16,9 +16,10 @@
     8123
   ],
   "mounts": [
+    "source=vscode-${containerWorkspaceFolderBasename},target=/home/vscode/.homeassistant,type=volume",
     "source=${localWorkspaceFolder}/configuration.yaml,target=/home/vscode/.homeassistant/configuration.yaml,type=bind",
     "source=${localWorkspaceFolder}/custom_components,target=/home/vscode/.homeassistant/custom_components,type=bind",
-    "source=${localWorkspaceFolder}/.storage,target=/home/vscode/.homeassistant/.storage,type=bind"
+    // "source=${localWorkspaceFolder}/.storage,target=/home/vscode/.homeassistant/.storage,type=bind"
   ],
   // "runArgs": ["--env-file", "${localWorkspaceFolder}/test/.env"]
   "customizations": {
@@ -36,6 +37,10 @@
         "python.linting.enabled": true,
         "python.languageServer": "Pylance",
         "python.formatting.provider": "black",
+        "python.linting.pylintArgs": [
+          "--init-hook",
+          "import sys; sys.path.append('/srv/homeassistant/lib/python3.10/site-packages/')"
+        ],
         "files.exclude": {
           "**/.git": true,
           "**/.DS_Store": true,

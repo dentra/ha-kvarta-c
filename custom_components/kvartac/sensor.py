@@ -76,10 +76,6 @@ async def async_setup_entry(
     """Set up the platform from config entry."""
 
     coordinator: KvartaCDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-    if CONF_UPDATE_INTERVAL in entry.options:
-        coordinator.update_interval = timedelta(
-            seconds=entry.options[CONF_UPDATE_INTERVAL]
-        )
 
     async_add_entities(
         KvartaCCounterSensor(
