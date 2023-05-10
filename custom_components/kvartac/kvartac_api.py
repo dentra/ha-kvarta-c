@@ -54,7 +54,11 @@ class KvartaCApi:
         _LOGGER.debug("Parsing account")
 
         account_str = "Номер лицевого счета:"
-        text = re.sub("\\s{2,}", " ", links[1].get_text().strip().replace("\r","").replace("\n"," "))
+        text = re.sub(
+            "\\s{2,}",
+            " ",
+            links[1].get_text().strip().replace("\r", "").replace("\n", " "),
+        )
         if not text.startswith(account_str):
             _LOGGER.warning("Can't parse account, data: %s", text)
             return
@@ -63,17 +67,19 @@ class KvartaCApi:
         # TODO check with self.account_id
         _LOGGER.debug("Account ID: %s", acc_id)
 
-        self.account = re.sub("\\s{2,}", " ", links[2].get_text().strip())
+        self.account = re.sub("\\s{2,}", " ", links[2].get_text()).strip()
         _LOGGER.debug("Account: %s", self.account)
 
-        self.organisation = re.sub("\\s{2,}", " ", links[3].get_text().replace('" ', '"').replace('",', '"'))
+        self.organisation = re.sub(
+            "\\s{2,}", " ", links[3].get_text().replace('" ', '"').replace('",', '"')
+        )
         _LOGGER.debug("Organisation: %s", self.organisation)
 
         self.prev_save_date = links[4].find("b").get_text().strip()
         _LOGGER.debug("Previous save date: %s", self.prev_save_date)
 
     def _parse_counter(self, links: ResultSet[Tag], service: str, start_index: int):
-        _LOGGER.debug("Parsing counter for \"%s\" at %d", service, start_index)
+        _LOGGER.debug('Parsing counter for "%s" at %d', service, start_index)
 
         counter = links[start_index + 1].find("input")
         if not counter:
@@ -127,19 +133,8 @@ class KvartaCApi:
 
         self._parse_account(links)
 
-        service_count = 0
-        for inp in soup.select("input[name]"):
-            name = inp.attrs["name"]
-            find = "service"
-            if name.startswith(find):
-                service_no = int(name[len(find) : len(find) + 1])
-                service_count = max(service_count, service_no)
+        service_count = len(soup.select("input[name^=service]"))
         _LOGGER.debug("Found %d services", service_count)
-
-        # i = 0
-        # for link in links:
-        #     print("***** link", i, link)
-        #     i = i + 1
 
         for i in range(service_count):
             self._parse_service(links, i + 1, 11 + (i * 5))
@@ -215,8 +210,8 @@ class KvartaCApi:
         page = session.get(self._TENANT_URL)
         return self._parse_html(page.content)
 
-    def parse_file(self, filename: str):
-        with open(filename, "r", encoding="utf-8") as file:
+    def parse_file(self, filename: str, encoding: str = "utf-8"):
+        with open(filename, "r", encoding=encoding) as file:
             self._parse_html(file.read())
 
     @property
