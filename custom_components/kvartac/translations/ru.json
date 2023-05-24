@@ -1,11 +1,13 @@
 {
+    "title": "Кварта-С",
+    "name": "Кварта-С",
     "config": {
         "error": {
-            "cant_connect": "Неудается подключится к серверу",
+            "cannot_connect": "Ошибка подключения к серверу",
+            "invalid_auth": "Ошибка аутентификации",
             "invalid_acc_id": "Неверный лицевой счет",
             "invalid_org_id": "Неверная организация",
-            "api_error": "Ошибка API",
-            "invalid_auth": "Неправильные логин/пароль"
+            "api_error": "Ошибка API"
         },
         "abort": {
             "already_configured": "Такой аккаунт уже существует"
@@ -27,7 +29,8 @@
             "init": {
                 "data": {
                     "diagnostic_sensors": "Сенсоры в диагностическом режиме",
-                    "update_interval": "Интервал обновления"
+                    "update_interval": "Интервал обновления",
+                    "prev_date_sensor": "Дополнительный сенсор с датой показаний"
                 },
                 "description": "{acc_info}\n{org_info}"
             }

@@ -1,7 +1,7 @@
 """Sensor implementaion routines"""
 import logging
 from typing import Any, Callable, Final
-from datetime import datetime, date, timedelta
+from datetime import date
 
 import voluptuous as vol
 
@@ -13,35 +13,30 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, HomeAssistantError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.device_registry import DeviceEntryType
 
-from homeassistant.const import (
-    VOLUME_CUBIC_METERS,
-    ENERGY_KILO_WATT_HOUR,
-)
-
-from .const import CONF_DIAGNOSTIC_SENSORS, CONF_UPDATE_INTERVAL, DOMAIN
+from homeassistant.const import UnitOfVolume, UnitOfEnergy
 
 from .kvartac_api import KvartaCApi
-from . import KvartaCDataUpdateCoordinator
+from . import const, KvartaCDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 
 SENSOR_ELECTRICITY: Final = SensorEntityDescription(
     key="electricity",
-    native_unit_of_measurement=ENERGY_KILO_WATT_HOUR,
+    native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
     device_class=SensorDeviceClass.ENERGY,
     state_class=SensorStateClass.TOTAL_INCREASING,
 )
 
 SENSOR_GAS: Final = SensorEntityDescription(
     key="gas",
-    native_unit_of_measurement=VOLUME_CUBIC_METERS,
+    native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
     device_class=SensorDeviceClass.GAS,
     state_class=SensorStateClass.TOTAL_INCREASING,
 )
@@ -49,14 +44,16 @@ SENSOR_GAS: Final = SensorEntityDescription(
 SENSOR_WATER_HOT: Final = SensorEntityDescription(
     key="water_hot",
     icon="mdi:water",
-    native_unit_of_measurement=VOLUME_CUBIC_METERS,
+    device_class=SensorDeviceClass.VOLUME,
+    native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
     state_class=SensorStateClass.TOTAL_INCREASING,
 )
 
 SENSOR_WATER_COLD: Final = SensorEntityDescription(
     key="water_cold",
     icon="mdi:water-outline",
-    native_unit_of_measurement=VOLUME_CUBIC_METERS,
+    device_class=SensorDeviceClass.VOLUME,
+    native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
     state_class=SensorStateClass.TOTAL_INCREASING,
 )
 
@@ -75,26 +72,29 @@ async def async_setup_entry(
 ):
     """Set up the platform from config entry."""
 
-    coordinator: KvartaCDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: KvartaCDataUpdateCoordinator = hass.data[const.DOMAIN][entry.entry_id]
 
+    diag = entry.options.get(const.CONF_DIAGNOSTIC_SENSORS, False)
     async_add_entities(
-        KvartaCCounterSensor(
-            coordinator,
-            entry.entry_id,
-            counter,
-            entry.options.get(CONF_DIAGNOSTIC_SENSORS, False),
-        )
+        KvartaCCounterSensor(coordinator, entry.entry_id, counter, diag)
         for counter in coordinator.api.counters.keys()
     )
-    async_add_entities([KvartaCDiagnosticSensor(coordinator, entry.entry_id)])
 
-    platform = entity_platform.async_get_current_platform()
-    platform.async_register_entity_service(
-        "update_value",
+    if entry.options.get(const.CONF_PREV_DATE_SENSOR, True):
+        async_add_entities([KvartaCDiagnosticSensor(coordinator, entry.entry_id)])
+
+    min_value = None
+    for counter in coordinator.api.counters.values():
+        value = counter[KvartaCApi.COUNTER_VALUE]
+        min_value = value if min_value is None else min(min_value, value)
+    _LOGGER.debug("Minimal sevice value is %d", min_value)
+
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        const.SERVICE_UPDATE_VALUE_CODE,
         {
             vol.Required("value"): vol.All(
                 vol.Coerce(int),
-                vol.Range(min=1),
+                vol.Range(min=min_value, max=999999, max_included=True),
             ),
         },
         _KvartaCSensor.async_update_value.__name__,
@@ -106,7 +106,7 @@ class _KvartaCSensor(CoordinatorEntity[KvartaCDataUpdateCoordinator], SensorEnti
         super().__init__(coordinator)
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
-            identifiers={(DOMAIN, entry_id)},
+            identifiers={(const.DOMAIN, entry_id)},
             configuration_url=KvartaCApi.BASE_URL,
             name=self.coordinator.api.account,
             model=self.coordinator.api.account,
@@ -134,14 +134,14 @@ class KvartaCDiagnosticSensor(_KvartaCSensor):
         }
         self._attr_name = f"Предыдущие показания {self._api.account}"
         uid = f"{self._api.uid}_date"
-        self._attr_unique_id = f"kvartac.{uid}"
+        self._attr_unique_id = f"{const.DOMAIN}.{uid}"
         self.entity_id = f"sensor.{uid}"
         self.entity_description = SENSOR_SAVE_DATE
 
     @property
     def native_value(self) -> date:
         """Return the value of the sensor."""
-        return datetime.strptime(self._api.prev_save_date, "%d.%m.%Y").date()
+        return self._api.prev_save_date
 
 
 class KvartaCCounterSensor(_KvartaCSensor):
@@ -160,14 +160,21 @@ class KvartaCCounterSensor(_KvartaCSensor):
         counter = self._counter
         service = counter[KvartaCApi.COUNTER_SERVICE]
 
+        uid = f"{self._api.uid}_{counter_id}"
+        self.entity_id = f"sensor.{uid}"
+
+        self._attr_unique_id = f"{const.DOMAIN}.{uid}"
+        self._attr_name = f"{service} {counter[KvartaCApi.COUNTER_ID]}"
         self._attr_extra_state_attributes = {
             "service": service,
             "counter": counter[KvartaCApi.COUNTER_ID],
+            "counter_id": counter_id,
+            "date": self._api.prev_save_date.isoformat(),
+            "account": self._api.account,
+            "account_id": self._api.account_id,
+            "organisation": self._api.organisation,
+            "organisation_id": self._api.organisation_id,
         }
-        self._attr_name = f"{service} {counter[KvartaCApi.COUNTER_ID]}"
-        uid = f"{self._api.uid}_{counter_id}_value"
-        self._attr_unique_id = f"{DOMAIN}.{uid}"
-        self.entity_id = f"sensor.{uid}"
 
         if service.lower().endswith("энергия"):
             self.entity_description = SENSOR_ELECTRICITY
@@ -186,7 +193,7 @@ class KvartaCCounterSensor(_KvartaCSensor):
         return self._api.counters[self._counter_id]
 
     @property
-    def native_value(self) -> int:
+    def native_value(self) -> int | float:
         """Return the value of the sensor."""
         return self._counter[KvartaCApi.COUNTER_VALUE]
 
@@ -194,13 +201,12 @@ class KvartaCCounterSensor(_KvartaCSensor):
         return f"{self._counter}"
 
     async def async_update_value(self, value: int):
-        if value < self.state:
-            _LOGGER.error("[%s] New value is less than passes %d", self.name, value)
-        elif value == self.state:
-            pass
-        else:
-            _LOGGER.debug("[%s]: Updating to %d", self.name, value)
-            await self._api.async_update(self._counter_id, value)
+        if value <= self.state:
+            raise HomeAssistantError(
+                f"Новое значение {value} не больше предыдущего {self.state}"
+            )
 
-        self.async_write_ha_state()
-        # await self.coordinator.async_request_refresh()
+        _LOGGER.debug("[%s]: Updating to %d", self.name, value)
+        await self._api.async_update(self._counter_id, value)
+
+        await self.async_update()

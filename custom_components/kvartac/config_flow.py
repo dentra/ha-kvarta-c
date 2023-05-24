@@ -6,7 +6,6 @@ from datetime import timedelta
 
 import voluptuous as vol
 
-from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import selector
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant, callback
@@ -21,17 +20,32 @@ DEMO_ORG_ID: Final = "0000"
 DEMO_PASSWD: Final = "demo"
 
 
+def _marker(
+    marker: vol.Marker, key: str, options: Dict[str, Any], default: Any | None = None
+):
+    if default is None:
+        return marker(key)
+
+    if isinstance(options, dict) and key in options:
+        suggested_value = options[key]
+    else:
+        suggested_value = default
+
+    return marker(key, description={"suggested_value": suggested_value})
+
+
 def required(
     key: str, options: Dict[str, Any], default: Any | None = None
 ) -> vol.Required:
     """Return vol.Required."""
-    if isinstance(options, dict) and key in options:
-        suggested_value = options[key]
-    elif default is not None:
-        suggested_value = default
-    else:
-        return vol.Required(key)
-    return vol.Required(key, description={"suggested_value": suggested_value})
+    return _marker(vol.Required, key, options, default)
+
+
+def optional(
+    key: str, options: Dict[str, Any], default: Any | None = None
+) -> vol.Optional:
+    """Return vol.Required."""
+    return _marker(vol.Optional, key, options, default)
 
 
 async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
@@ -170,12 +184,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                     ): selector.DurationSelector(
                         selector.DurationSelectorConfig(enable_day=True),
                     ),
-                    vol.Required(
+                    vol.Optional(
+                        const.CONF_PREV_DATE_SENSOR,
+                        default=self.config_entry.options.get(
+                            const.CONF_PREV_DATE_SENSOR, True
+                        ),
+                    ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+                    vol.Optional(
                         const.CONF_DIAGNOSTIC_SENSORS,
                         default=self.config_entry.options.get(
-                            const.CONF_DIAGNOSTIC_SENSORS, True
+                            const.CONF_DIAGNOSTIC_SENSORS, False
                         ),
-                    ): cv.boolean,
+                    ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
                 }
             ),
             description_placeholders={

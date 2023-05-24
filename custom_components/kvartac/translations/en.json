@@ -1,11 +1,13 @@
 {
+    "title": "Kvarta-C",
+    "name": "Kvarta-C",
     "config": {
         "error": {
-            "cant_connect": "Can't connect to server",
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
             "invalid_acc_id": "Invalid account",
             "invalid_org_id": "Invalid organisation",
-            "api_error": "API Error occuried",
-            "invalid_auth": "Invalid login/password"
+            "api_error": "API Error occuried"
         },
         "abort": {
             "already_configured": "Account is already configured"
@@ -27,7 +29,8 @@
             "init": {
                 "data": {
                     "diagnostic_sensors": "Sensors in diagnostic mode",
-                    "update_interval": "Update interval"
+                    "update_interval": "Update interval",
+                    "prev_date_sensor": "Additional date sensor"
                 },
                 "description": "{acc_info}\n{org_info}"
             }

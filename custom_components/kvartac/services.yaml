@@ -14,7 +14,10 @@ update_value:
         entity:
           integration: kvartac
           domain: sensor
-          # device_class: noolite_dimmer
+          device_class:
+            - gas
+            - volume
+            - energy
     value:
       description: The new counter value to set
       name: Value

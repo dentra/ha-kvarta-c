@@ -1,6 +1,7 @@
 """Kvarta-C API"""
 import logging
 from typing import Final, TypedDict
+from datetime import datetime, date
 import re
 
 from homeassistant import exceptions
@@ -16,7 +17,7 @@ class Counter(TypedDict):
 
     id: str
     service: str
-    value: int
+    value: int | float
 
 
 class KvartaCApi:
@@ -47,7 +48,7 @@ class KvartaCApi:
         )
         self.account = ""
         self.organisation = ""
-        self.prev_save_date = ""
+        self.prev_save_date: date = None
         self.counters = {}
 
     def _parse_account(self, links: ResultSet[Tag]):
@@ -75,7 +76,8 @@ class KvartaCApi:
         )
         _LOGGER.debug("Organisation: %s", self.organisation)
 
-        self.prev_save_date = links[4].find("b").get_text().strip()
+        prev_save_date = links[4].find("b").get_text().strip()
+        self.prev_save_date = datetime.strptime(prev_save_date, "%d.%m.%Y").date()
         _LOGGER.debug("Previous save date: %s", self.prev_save_date)
 
     def _parse_counter(self, links: ResultSet[Tag], service: str, start_index: int):
