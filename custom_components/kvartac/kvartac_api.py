@@ -92,7 +92,8 @@ class KvartaCApi:
         if service.endswith(":"):
             service = service[:-1].strip()
 
-        value = self._text(row.select_one("span.meters__old"))
+        # значения могут быть с запятой, например 000379,90 (#2)
+        value = self._text(row.select_one("span.meters__old")).replace(",", ".")
         try:
             value = float(value) if value.find(".") != -1 else int(value)
         except ValueError:
