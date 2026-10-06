@@ -57,6 +57,14 @@ SENSOR_WATER_COLD: Final = SensorEntityDescription(
     state_class=SensorStateClass.TOTAL_INCREASING,
 )
 
+SENSOR_HEATING: Final = SensorEntityDescription(
+    key="heating",
+    icon="mdi:radiator",
+    device_class=SensorDeviceClass.ENERGY,
+    native_unit_of_measurement=UnitOfEnergy.GIGA_CALORIE,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+)
+
 SENSOR_SAVE_DATE: Final = SensorEntityDescription(
     key="save_date",
     entity_registry_enabled_default=True,
@@ -165,22 +173,15 @@ class KvartaCCounterSensor(_KvartaCSensor):
 
         self._attr_unique_id = f"{const.DOMAIN}.{uid}"
         self._attr_name = f"{service} {counter[KvartaCApi.COUNTER_ID]}"
-        self._attr_extra_state_attributes = {
-            "service": service,
-            "counter": counter[KvartaCApi.COUNTER_ID],
-            "counter_id": counter_id,
-            "date": self._api.prev_save_date.isoformat(),
-            "account": self._api.account,
-            "account_id": self._api.account_id,
-            "organisation": self._api.organisation,
-            "organisation_id": self._api.organisation_id,
-        }
 
-        if service.lower().endswith("энергия"):
+        service = service.lower()
+        if service.startswith("отопл") or service.startswith("тепл"):
+            self.entity_description = SENSOR_HEATING
+        elif "энерг" in service or "электр" in service:
             self.entity_description = SENSOR_ELECTRICITY
-        elif service.lower().startswith("газ"):
+        elif service.startswith("газ"):
             self.entity_description = SENSOR_GAS
-        elif service.lower().startswith("гор"):
+        elif service.startswith("гор") or service.startswith("гвс"):
             self.entity_description = SENSOR_WATER_HOT
         else:
             self.entity_description = SENSOR_WATER_COLD
@@ -196,6 +197,22 @@ class KvartaCCounterSensor(_KvartaCSensor):
     def native_value(self) -> int | float:
         """Return the value of the sensor."""
         return self._counter[KvartaCApi.COUNTER_VALUE]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the state attributes."""
+        counter = self._counter
+        prev_save_date = self._api.prev_save_date
+        return {
+            "service": counter[KvartaCApi.COUNTER_SERVICE],
+            "counter": counter[KvartaCApi.COUNTER_ID],
+            "counter_id": self._counter_id,
+            "date": prev_save_date.isoformat() if prev_save_date else None,
+            "account": self._api.account,
+            "account_id": self._api.account_id,
+            "organisation": self._api.organisation,
+            "organisation_id": self._api.organisation_id,
+        }
 
     def __str__(self):
         return f"{self._counter}"
