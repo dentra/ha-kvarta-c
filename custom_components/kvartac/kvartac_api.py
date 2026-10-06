@@ -7,7 +7,7 @@ import re
 from homeassistant import exceptions
 
 import aiohttp
-from bs4 import BeautifulSoup, ResultSet, Tag
+from bs4 import BeautifulSoup, Tag
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,57 +51,58 @@ class KvartaCApi:
         self.prev_save_date: date = None
         self.counters = {}
 
-    def _parse_account(self, links: ResultSet[Tag]):
+    @staticmethod
+    def _text(tag: Tag | None) -> str:
+        if tag is None:
+            return ""
+        return re.sub("\\s+", " ", tag.get_text()).strip()
+
+    def _parse_account(self, soup: BeautifulSoup):
         _LOGGER.debug("Parsing account")
 
-        account_str = "Номер лицевого счета:"
-        text = re.sub(
-            "\\s{2,}",
-            " ",
-            links[1].get_text().strip().replace("\r", "").replace("\n", " "),
-        )
-        if not text.startswith(account_str):
-            _LOGGER.warning("Can't parse account, data: %s", text)
-            return
+        for row in soup.select("div.cab-account__row"):
+            label = self._text(row.select_one(".cab-account__label"))
+            value = self._text(row.select_one(".cab-account__value"))
+            if "cab-account__row--full" in row.get("class", []):
+                self.organisation = label.replace('" ', '"').replace('",', '"')
+                _LOGGER.debug("Organisation: %s", self.organisation)
+            elif label.startswith("Лицевой"):
+                # TODO check with self.account_id
+                _LOGGER.debug("Account ID: %s", value)
+            elif label.startswith("Плательщик"):
+                self.account = value
+                _LOGGER.debug("Account: %s", self.account)
 
-        acc_id = text[len(account_str) :].strip()
-        # TODO check with self.account_id
-        _LOGGER.debug("Account ID: %s", acc_id)
-
-        self.account = re.sub("\\s{2,}", " ", links[2].get_text()).strip()
-        _LOGGER.debug("Account: %s", self.account)
-
-        self.organisation = re.sub(
-            "\\s{2,}", " ", links[3].get_text().replace('" ', '"').replace('",', '"')
-        )
-        _LOGGER.debug("Organisation: %s", self.organisation)
-
-        prev_save_date = links[4].find("b").get_text().strip()
-        self.prev_save_date = datetime.strptime(prev_save_date, "%d.%m.%Y").date()
+        prev_save_date = self._text(soup.select_one(".cab-note b"))
+        try:
+            self.prev_save_date = datetime.strptime(prev_save_date, "%d.%m.%Y").date()
+        except ValueError:
+            _LOGGER.warning("Can't parse previous save date: %s", prev_save_date)
+            self.prev_save_date = None
         _LOGGER.debug("Previous save date: %s", self.prev_save_date)
 
-    def _parse_counter(self, links: ResultSet[Tag], service: str, start_index: int):
-        _LOGGER.debug('Parsing counter for "%s" at %d', service, start_index)
-
-        counter = links[start_index + 1].find("input")
-        if not counter:
+    def _parse_counter(self, row: Tag):
+        counter = row.select_one("span.meters__new input[name]")
+        if counter is None:
             _LOGGER.debug("No counter found")
             return
         counter = counter.attrs["name"]
 
-        value = links[start_index].get_text().strip()
-        if value.find(".") != -1:
-            value = float(value)
-        else:
-            value = int(value)
+        service = self._text(row.select_one("span.meters__name"))
+        if service.endswith(":"):
+            service = service[:-1].strip()
 
-        cid = links[start_index + 2].find("font")
-        if cid is not None:
-            cid = cid.get_text().strip()
-            if cid.startswith("№"):
-                cid = cid[1:]
-            cid = cid.strip()
-        if cid is None or cid == "":
+        value = self._text(row.select_one("span.meters__old"))
+        try:
+            value = float(value) if value.find(".") != -1 else int(value)
+        except ValueError:
+            _LOGGER.warning("Can't parse value of %s: %s", counter, value)
+            return
+
+        cid = self._text(row.select_one("span.meters__sn"))
+        if cid.startswith("№"):
+            cid = cid[1:].strip()
+        if cid == "":
             cid = counter[-1]
 
         self.counters[counter] = {
@@ -112,34 +113,26 @@ class KvartaCApi:
 
         _LOGGER.debug("Counter %s[%s]=%s", counter, cid, value)
 
-    def _parse_service(self, links: ResultSet[Tag], service_id: int, start_index: int):
-        _LOGGER.debug("Parsing service %d", service_id)
-        service = links[start_index + 0].get_text().strip()
-        if service.endswith(":"):
-            service = service[:-1].strip()
-
-        start_index += 1
-
-        # for _ in range(4):
-        #     self._parse_counter(links, service, start_index)
-        #     start_index += 2
-        # после обновления от 04.03.2023, теперь один счетчик на строку таблицы
-        self._parse_counter(links, service, start_index)
-
     def _parse_html(self, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
 
-        links = soup.select("font.medtxt")
-        if len(links) == 0:
+        # после обновления дизайна сайта от 2026 года
+        rows = soup.select("div.meters__row")
+        if len(rows) == 0:
             return False
 
-        self._parse_account(links)
+        self._parse_account(soup)
 
-        service_count = len(soup.select("input[name^=service]"))
-        _LOGGER.debug("Found %d services", service_count)
+        _LOGGER.debug("Found %d counters", len(rows))
 
-        for i in range(service_count):
-            self._parse_service(links, i + 1, 11 + (i * 5))
+        counters = self.counters
+        self.counters = {}
+        for row in rows:
+            self._parse_counter(row)
+
+        if len(self.counters) == 0:
+            self.counters = counters
+            return False
 
         return True
 
