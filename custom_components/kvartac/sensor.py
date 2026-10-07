@@ -24,7 +24,8 @@ from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.const import UnitOfVolume, UnitOfEnergy
 
 from .kvartac_api import KvartaCApi
-from . import const, KvartaCDataUpdateCoordinator
+from . import const
+from .coordinator import KvartaCDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

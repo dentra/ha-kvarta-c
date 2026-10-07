@@ -13,9 +13,8 @@ from homeassistant.helpers import selector
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant, callback
 
-from . import (
-    const,
-    kvartac_api,
+from . import const, kvartac_api
+from .coordinator import (
     KvartaCDataUpdateCoordinator,
     create_api,
     async_fetch,
