@@ -14,7 +14,8 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
-from homeassistant.core import HomeAssistant, HomeAssistantError
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers import entity_platform
@@ -231,10 +232,10 @@ class KvartaCCounterSensor(_KvartaCSensor):
 
     async def async_update_value(self, value: int):
         if not self.available:
-            raise HomeAssistantError(f"Счетчик {self._counter_id} недоступен")
+            raise ServiceValidationError(f"Счетчик {self._counter_id} недоступен")
 
         if value <= self.native_value:
-            raise HomeAssistantError(
+            raise ServiceValidationError(
                 f"Новое значение {value} не больше предыдущего {self.state}"
             )
 

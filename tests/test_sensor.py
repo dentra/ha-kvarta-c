@@ -1,7 +1,7 @@
 import pytest
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
@@ -146,7 +146,7 @@ async def test_update_value_not_greater(
     await _setup(hass, aioclient_mock, config_entry)
     aioclient_mock.clear_requests()
 
-    with pytest.raises(HomeAssistantError, match="не больше предыдущего"):
+    with pytest.raises(ServiceValidationError, match="не больше предыдущего"):
         await hass.services.async_call(
             const.DOMAIN,
             const.SERVICE_UPDATE_VALUE_CODE,
