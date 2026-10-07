@@ -57,31 +57,35 @@ class KvartaCApi:
             return ""
         return re.sub("\\s+", " ", tag.get_text()).strip()
 
-    def _parse_account(self, soup: BeautifulSoup):
+    def _parse_account(self, soup: BeautifulSoup) -> tuple[str, str, date | None]:
         _LOGGER.debug("Parsing account")
 
+        account = ""
+        organisation = ""
         for row in soup.select("div.cab-account__row"):
             label = self._text(row.select_one(".cab-account__label"))
             value = self._text(row.select_one(".cab-account__value"))
             if "cab-account__row--full" in row.get("class", []):
-                self.organisation = label.replace('" ', '"').replace('",', '"')
-                _LOGGER.debug("Organisation: %s", self.organisation)
+                organisation = label.replace('" ', '"').replace('",', '"')
+                _LOGGER.debug("Organisation: %s", organisation)
             elif label.startswith("Лицевой"):
                 # TODO check with self.account_id
                 _LOGGER.debug("Account ID: %s", value)
             elif label.startswith("Плательщик"):
-                self.account = value
-                _LOGGER.debug("Account: %s", self.account)
+                account = value
+                _LOGGER.debug("Account: %s", account)
 
         prev_save_date = self._text(soup.select_one(".cab-note b"))
         try:
-            self.prev_save_date = datetime.strptime(prev_save_date, "%d.%m.%Y").date()
+            prev_save_date = datetime.strptime(prev_save_date, "%d.%m.%Y").date()
         except ValueError:
             _LOGGER.warning("Can't parse previous save date: %s", prev_save_date)
-            self.prev_save_date = None
-        _LOGGER.debug("Previous save date: %s", self.prev_save_date)
+            prev_save_date = None
+        _LOGGER.debug("Previous save date: %s", prev_save_date)
 
-    def _parse_counter(self, row: Tag):
+        return account, organisation, prev_save_date
+
+    def _parse_counter(self, row: Tag, counters: dict[str, Counter]):
         counter = row.select_one("span.meters__new input[name]")
         if counter is None:
             _LOGGER.debug("No counter found")
@@ -106,7 +110,7 @@ class KvartaCApi:
         if cid == "":
             cid = counter[-1]
 
-        self.counters[counter] = {
+        counters[counter] = {
             self.COUNTER_VALUE: value,
             self.COUNTER_ID: cid,
             self.COUNTER_SERVICE: service,
@@ -122,19 +126,23 @@ class KvartaCApi:
         if soup.select_one("div.cab-account") is None:
             return False
 
-        self._parse_account(soup)
+        account, organisation, prev_save_date = self._parse_account(soup)
 
         rows = soup.select("div.meters__row")
         _LOGGER.debug("Found %d counters", len(rows))
 
-        counters = self.counters
-        self.counters = {}
+        counters: dict[str, Counter] = {}
         for row in rows:
-            self._parse_counter(row)
+            self._parse_counter(row, counters)
 
-        if len(rows) > 0 and len(self.counters) == 0:
-            self.counters = counters
+        if len(rows) > 0 and len(counters) == 0:
             raise ApiError("Can't parse counters")
+
+        # обновляем данные только после успешного разбора всей страницы
+        self.account = account
+        self.organisation = organisation
+        self.prev_save_date = prev_save_date
+        self.counters = counters
 
         return True
 
