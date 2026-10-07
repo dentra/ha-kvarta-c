@@ -42,5 +42,17 @@
                 "description": "{acc_info}\n{org_info}"
             }
         }
+    },
+    "services": {
+        "update_value": {
+            "name": "Передать показания",
+            "description": "Передать новые показания счетчика.",
+            "fields": {
+                "value": {
+                    "name": "Значение",
+                    "description": "Новые показания счетчика. Должны быть больше предыдущих."
+                }
+            }
+        }
     }
 }

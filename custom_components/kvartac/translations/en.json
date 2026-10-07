@@ -42,5 +42,17 @@
                 "description": "{acc_info}\n{org_info}"
             }
         }
+    },
+    "services": {
+        "update_value": {
+            "name": "Update counter value",
+            "description": "Send new counter readings.",
+            "fields": {
+                "value": {
+                    "name": "Value",
+                    "description": "The new counter readings to send. Must be greater than the previous one."
+                }
+            }
+        }
     }
 }

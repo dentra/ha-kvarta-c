@@ -1,28 +1,22 @@
 update_value:
-  description: Update counter value
-  # target:
-  #   entity:
-  #     integration: "kvartac"
-  #     domain: "sensor"
+  name: Update counter value
+  description: Send new counter readings.
+  target:
+    entity:
+      integration: kvartac
+      domain: sensor
+      device_class:
+        - gas
+        - volume
+        - energy
   fields:
-    entity_id:
-      description: Name of entity to update counter.
-      # example: "light.living_room_lights"
-      name: Entity
-      required: true
-      selector:
-        entity:
-          integration: kvartac
-          domain: sensor
-          device_class:
-            - gas
-            - volume
-            - energy
     value:
-      description: The new counter value to set
       name: Value
+      description: The new counter readings to send. Must be greater than the previous one.
+      example: "48"
       required: true
       selector:
         number:
           min: 1
           max: 999999
+          mode: box
