@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 import logging
+from collections.abc import Mapping
 from typing import Any, Final, Dict
 from datetime import timedelta
 
+import aiohttp
 import voluptuous as vol
 
 from homeassistant.helpers import selector
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import config_validation as cv
 
 from . import const, kvartac_api, KvartaCDataUpdateCoordinator
 
@@ -68,6 +71,13 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         data[const.CONF_ACC_ID] = DEMO_ACC_ID
         data[const.CONF_PASSWD] = DEMO_PASSWD
 
+    api = await async_fetch(hass, data)
+
+    return {"title": api.account, "api": api}
+
+
+async def async_fetch(hass: HomeAssistant, data: Mapping[str, Any]):
+    """Login and fetch account data."""
     api = kvartac_api.KvartaCApi(
         async_get_clientsession(hass),
         data[const.CONF_ORG_ID],
@@ -75,9 +85,12 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         data[const.CONF_PASSWD],
     )
 
-    await api.async_fetch()
+    try:
+        await api.async_fetch()
+    except (aiohttp.ClientError, TimeoutError) as err:
+        raise CannotConnect from err
 
-    return {"title": api.account, "api": api}
+    return api
 
 
 class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
@@ -140,6 +153,45 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
             errors=errors,
         )
 
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]):
+        """Start reauth on wrong saved password."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
+        """Ask for a new password."""
+        entry = self._get_reauth_entry()
+        errors = {}
+        if user_input is not None:
+            data = {**entry.data, const.CONF_PASSWD: user_input[const.CONF_PASSWD]}
+            try:
+                await async_fetch(self.hass, data)
+                return self.async_update_reload_and_abort(entry, data=data)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except kvartac_api.ApiAuthError:
+                errors["base"] = "invalid_auth"
+            except kvartac_api.ApiError:
+                errors["base"] = "api_error"
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(const.CONF_PASSWD): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD,
+                            autocomplete="current-password",
+                        )
+                    ),
+                }
+            ),
+            description_placeholders={
+                "org_id": entry.data[const.CONF_ORG_ID],
+                "acc_id": entry.data[const.CONF_ACC_ID],
+            },
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -148,7 +200,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
         return OptionsFlowHandler()
 
 
-class OptionsFlowHandler(config_entries.OptionsFlow):
+class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
     """Handle an options flow for integration."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
@@ -156,9 +208,16 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        coordinator: KvartaCDataUpdateCoordinator = self.hass.data[const.DOMAIN][
-            self.config_entry.entry_id
-        ]
+        # координатора нет, если запись не загрузилась
+        coordinator: KvartaCDataUpdateCoordinator | None = self.hass.data.get(
+            const.DOMAIN, {}
+        ).get(self.config_entry.entry_id)
+        update_interval = cv.time_period(
+            self.config_entry.options.get(
+                const.CONF_UPDATE_INTERVAL,
+                const.DEFAULT_UPDATE_INTERVAL.total_seconds(),
+            )
+        )
 
         def timedelta_to_dict(delta: timedelta) -> dict:
             hours, seconds = divmod(delta.seconds, 3600)
@@ -176,7 +235,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Optional(
                         const.CONF_UPDATE_INTERVAL,
-                        default=timedelta_to_dict(coordinator.update_interval),
+                        default=timedelta_to_dict(update_interval),
                     ): selector.DurationSelector(
                         selector.DurationSelectorConfig(enable_day=True),
                     ),
@@ -195,8 +254,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 }
             ),
             description_placeholders={
-                "acc_info": coordinator.api.account,
-                "org_info": coordinator.api.organisation,
+                "acc_info": (
+                    coordinator.api.account if coordinator else self.config_entry.title
+                ),
+                "org_info": coordinator.api.organisation if coordinator else "",
             },
         )
 

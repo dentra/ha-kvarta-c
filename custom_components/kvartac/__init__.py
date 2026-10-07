@@ -52,35 +52,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     coordinator = KvartaCDataUpdateCoordinator(hass, entry)
-    hass.data[DOMAIN][entry.entry_id] = coordinator
     await coordinator.async_config_entry_first_refresh()
-
-    # add options handler
-    if not entry.update_listeners:
-        entry.add_update_listener(async_update_options)
+    hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
 
 
-async def async_update_options(hass: HomeAssistant, entry: ConfigEntry):
-    """Update from a config entry options."""
-    await hass.config_entries.async_reload(entry.entry_id)
-
-
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    hass.data[DOMAIN].pop(entry.entry_id)
-
-    # workaround to reset diagnostic entity_category
-    registry = entity_registry.async_get(hass)
-    entities = entity_registry.async_entries_for_config_entry(registry, entry.entry_id)
-    for entity in entities:
-        if entity.entity_id.endswith("_value"):
-            registry.async_update_entity(entity.entity_id, entity_category=None)
-
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
 
 

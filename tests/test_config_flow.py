@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import aiohttp
 import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -11,7 +12,17 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
 
 from custom_components.kvartac import config_flow, const
 
-from .conftest import ACC_ID, LOGIN_URL, ORG_ID, PASSWD, UID, calls, mock_site
+from .conftest import (
+    ACC_ID,
+    LOGIN_URL,
+    ORG_ID,
+    PASSWD,
+    TENANT_URL,
+    UID,
+    calls,
+    load_fixture,
+    mock_site,
+)
 
 USER_INPUT = {
     const.CONF_ORG_ID: ORG_ID,
@@ -160,3 +171,117 @@ async def test_options_flow(
 
     coordinator = hass.data[const.DOMAIN][config_entry.entry_id]
     assert coordinator.update_interval == timedelta(days=1, hours=2)
+
+
+async def test_user_flow_cannot_connect(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.post(LOGIN_URL, exc=aiohttp.ClientError)
+    flow_id = await _start_flow(hass)
+
+    result = await hass.config_entries.flow.async_configure(flow_id, USER_INPUT)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_options_flow_not_loaded(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    mock_site(aioclient_mock, status=500)
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["description_placeholders"] == {
+        "acc_info": "Невский пр. д.1, кв. 13",
+        "org_info": "",
+    }
+
+
+async def _start_reauth(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> str:
+    mock_site(aioclient_mock, "unauth.html")
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress()
+    assert len(flows) == 1
+    assert flows[0]["step_id"] == "reauth_confirm"
+    assert flows[0]["context"]["source"] == config_entries.SOURCE_REAUTH
+    aioclient_mock.clear_requests()
+    return flows[0]["flow_id"]
+
+
+async def test_reauth(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    flow_id = await _start_reauth(hass, aioclient_mock, config_entry)
+    mock_site(aioclient_mock)
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, {const.CONF_PASSWD: "new"}
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert config_entry.data == {**USER_INPUT, const.CONF_PASSWD: "new"}
+    assert config_entry.state is config_entries.ConfigEntryState.LOADED
+    assert calls(aioclient_mock, "POST", LOGIN_URL)[0][2]["password"] == "new"
+
+
+async def test_reauth_demo_password(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    flow_id = await _start_reauth(hass, aioclient_mock, config_entry)
+    mock_site(aioclient_mock)
+
+    await hass.config_entries.flow.async_configure(
+        flow_id, {const.CONF_PASSWD: config_flow.DEMO_PASSWD}
+    )
+    await hass.async_block_till_done()
+
+    # пароль demo не подменяет аккаунт на демонстрационный
+    assert calls(aioclient_mock, "POST", LOGIN_URL)[0][2]["tsgid"] == ORG_ID
+    assert config_entry.data[const.CONF_ORG_ID] == ORG_ID
+
+
+@pytest.mark.parametrize(
+    ("tenant", "status", "error"),
+    [
+        ("unauth.html", 200, "invalid_auth"),
+        ("tenant.html", 500, "api_error"),
+    ],
+)
+async def test_reauth_errors(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+    tenant: str,
+    status: int,
+    error: str,
+) -> None:
+    flow_id = await _start_reauth(hass, aioclient_mock, config_entry)
+    mock_site(aioclient_mock, tenant, status)
+
+    result = await hass.config_entries.flow.async_configure(
+        flow_id, {const.CONF_PASSWD: "new"}
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": error}
+    assert config_entry.data[const.CONF_PASSWD] == PASSWD

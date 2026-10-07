@@ -1,4 +1,4 @@
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
@@ -40,6 +40,11 @@ async def test_setup_auth_error(
     assert not await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.SETUP_ERROR
+    assert [
+        flow["step_id"]
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["context"]["source"] == SOURCE_REAUTH
+    ] == ["reauth_confirm"]
 
 
 async def test_setup_api_error(
@@ -53,3 +58,4 @@ async def test_setup_api_error(
     assert not await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    assert config_entry.entry_id not in hass.data[const.DOMAIN]

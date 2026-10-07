@@ -9,7 +9,8 @@
             "api_error": "API Error occuried"
         },
         "abort": {
-            "already_configured": "Account is already configured"
+            "already_configured": "Account is already configured",
+            "reauth_successful": "Account is reconfigured successfully"
         },
         "step": {
             "user": {
@@ -20,6 +21,13 @@
                     "passwd": "Password"
                 },
                 "description": "Enter account information"
+            },
+            "reauth_confirm": {
+                "title": "Password changed",
+                "description": "Saved password for organisation {org_id} account {acc_id} does not fit. Enter the new one.",
+                "data": {
+                    "passwd": "Password"
+                }
             }
         }
     },
