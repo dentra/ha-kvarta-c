@@ -1,16 +1,16 @@
 {
     "domain": "kvartac",
     "name": "Kvarta-C",
-    "config_flow": true,
-    "documentation": "https://github.com/dentra/homeassistant-kvartac",
-    "issue_tracker": "https://github.com/dentra/homeassistant-kvartac/issues",
     "codeowners": [
         "@dentra"
     ],
+    "config_flow": true,
     "dependencies": [],
+    "documentation": "https://github.com/dentra/homeassistant-kvartac",
+    "iot_class": "cloud_polling",
+    "issue_tracker": "https://github.com/dentra/homeassistant-kvartac/issues",
     "requirements": [
         "beautifulsoup4"
     ],
-    "version": "2020.3.0",
-    "iot_class": "cloud_polling"
+    "version": "2020.3.0"
 }
