@@ -95,7 +95,7 @@ async def async_setup_entry(
     for counter in coordinator.api.counters.values():
         value = counter[KvartaCApi.COUNTER_VALUE]
         min_value = value if min_value is None else min(min_value, value)
-    _LOGGER.debug("Minimal sevice value is %d", min_value)
+    _LOGGER.debug("Minimal sevice value is %s", min_value)
 
     entity_platform.async_get_current_platform().async_register_entity_service(
         const.SERVICE_UPDATE_VALUE_CODE,
@@ -190,18 +190,27 @@ class KvartaCCounterSensor(_KvartaCSensor):
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
-    def _counter(self) -> dict[str, Any]:
-        return self._api.counters[self._counter_id]
+    def _counter(self) -> dict[str, Any] | None:
+        # счетчик может пропасть из ответа, если его не удалось распарсить
+        return self._api.counters.get(self._counter_id)
 
     @property
-    def native_value(self) -> int | float:
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return super().available and self._counter is not None
+
+    @property
+    def native_value(self) -> int | float | None:
         """Return the value of the sensor."""
-        return self._counter[KvartaCApi.COUNTER_VALUE]
+        counter = self._counter
+        return counter[KvartaCApi.COUNTER_VALUE] if counter else None
 
     @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes."""
         counter = self._counter
+        if counter is None:
+            return None
         prev_save_date = self._api.prev_save_date
         return {
             "service": counter[KvartaCApi.COUNTER_SERVICE],
@@ -218,7 +227,10 @@ class KvartaCCounterSensor(_KvartaCSensor):
         return f"{self._counter}"
 
     async def async_update_value(self, value: int):
-        if value <= self.state:
+        if not self.available:
+            raise HomeAssistantError(f"Счетчик {self._counter_id} недоступен")
+
+        if value <= self.native_value:
             raise HomeAssistantError(
                 f"Новое значение {value} не больше предыдущего {self.state}"
             )
