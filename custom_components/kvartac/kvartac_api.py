@@ -169,8 +169,8 @@ class KvartaCApi:
         content = await resp.text()
         res = self._parse_html(content)
         if not res:
-            _LOGGER.error(content)
-            raise ApiAuthError
+            _LOGGER.debug("Unauthorized page: %s", content)
+            raise ApiAuthError("Authentication failed")
 
     async def _async_update(self, counter_id: str, value: int):
         resp = await self._session.post(

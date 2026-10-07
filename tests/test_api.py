@@ -153,11 +153,20 @@ async def test_fetch(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -
 
 
 async def test_fetch_auth_error(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     mock_site(aioclient_mock, "unauth.html")
     with pytest.raises(ApiAuthError):
         await _api(hass).async_fetch()
+
+    # страница сайта пишется в лог только на уровне debug
+    assert not [
+        r
+        for r in caplog.records
+        if "Group mismatch" in r.getMessage() and r.levelno > 10
+    ]
 
 
 async def test_fetch_http_error(
