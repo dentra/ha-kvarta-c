@@ -38,8 +38,8 @@ async def test_counter_sensors(
     await _setup(hass, aioclient_mock, config_entry)
 
     cold = hass.states.get(COLD)
+    assert cold.attributes["friendly_name"] == "Невский пр. д.1, кв. 13 ХВС, 1 33334566"
     assert cold.state == "161"
-    assert cold.name == "Невский пр. д.1, кв. 13 ХВС, 1 33334566"
     assert cold.attributes["device_class"] == "volume"
     assert cold.attributes["unit_of_measurement"] == "m³"
     assert cold.attributes["icon"] == "mdi:water-outline"
@@ -54,7 +54,11 @@ async def test_counter_sensors(
     assert heating.attributes["device_class"] == "energy"
     assert heating.attributes["unit_of_measurement"] == "Gcal"
 
-    assert hass.states.get(DATE).state == "2023-03-25"
+    date = hass.states.get(DATE)
+    assert date.state == "2023-03-25"
+    assert date.attributes["friendly_name"] == (
+        "Невский пр. д.1, кв. 13 Предыдущие показания"
+    )
     assert len(hass.states.async_entity_ids("sensor")) == 6
 
 
@@ -76,6 +80,15 @@ async def test_sensor_options(
     assert hass.states.get(DATE) is None
     entity = er.async_get(hass).async_get(COLD)
     assert entity.entity_category is EntityCategory.DIAGNOSTIC
+
+    # после выключения опции категория сбрасывается
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_DIAGNOSTIC_SENSORS: False}
+    )
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert er.async_get(hass).async_get(COLD).entity_category is None
+    assert hass.states.get(DATE) is not None
 
 
 async def test_counter_missing(
@@ -113,6 +126,10 @@ async def test_update_value(
         {"entity_id": COLD, "value": 170},
         blocking=True,
     )
+
+    # страница читается один раз, без повторного обновления координатора
+    await hass.async_block_till_done()
+    assert len(calls(aioclient_mock, "GET", TENANT_URL)) == 1
 
     posts = calls(aioclient_mock, "POST", LOGIN_URL)
     assert [

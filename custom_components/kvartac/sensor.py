@@ -111,6 +111,8 @@ async def async_setup_entry(
 
 
 class _KvartaCSensor(CoordinatorEntity[KvartaCDataUpdateCoordinator], SensorEntity):
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: KvartaCDataUpdateCoordinator, entry_id: str):
         super().__init__(coordinator)
         self._attr_device_info = DeviceInfo(
@@ -141,7 +143,7 @@ class KvartaCDiagnosticSensor(_KvartaCSensor):
             "organisation": self._api.organisation,
             "organisation_id": self._api.organisation_id,
         }
-        self._attr_name = f"Предыдущие показания {self._api.account}"
+        self._attr_name = "Предыдущие показания"
         uid = f"{self._api.uid}_date"
         self._attr_unique_id = f"{const.DOMAIN}.{uid}"
         self.entity_id = f"sensor.{uid}"
@@ -239,4 +241,5 @@ class KvartaCCounterSensor(_KvartaCSensor):
         _LOGGER.debug("[%s]: Updating to %d", self.name, value)
         await self._api.async_update(self._counter_id, value)
 
-        await self.async_update()
+        # api уже перечитал страницу, повторный запрос не нужен
+        self.coordinator.async_set_updated_data(True)
