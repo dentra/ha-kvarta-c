@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers import entity_platform
+from homeassistant.helpers import entity_platform, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType
 
 from homeassistant.const import UnitOfVolume, UnitOfEnergy
@@ -92,6 +92,12 @@ async def async_setup_entry(
 
     if entry.options.get(const.CONF_PREV_DATE_SENSOR, True):
         async_add_entities([KvartaCDiagnosticSensor(coordinator, entry.entry_id)])
+    else:
+        # сенсор выключен в настройках, убираем его из реестра
+        registry = er.async_get(hass)
+        unique_id = KvartaCDiagnosticSensor.make_unique_id(coordinator.api)
+        if entity_id := registry.async_get_entity_id("sensor", const.DOMAIN, unique_id):
+            registry.async_remove(entity_id)
 
     min_value = None
     for counter in coordinator.api.counters.values():
@@ -145,10 +151,14 @@ class KvartaCDiagnosticSensor(_KvartaCSensor):
             "organisation_id": self._api.organisation_id,
         }
         self._attr_name = "Предыдущие показания"
-        uid = f"{self._api.uid}_date"
-        self._attr_unique_id = f"{const.DOMAIN}.{uid}"
-        self.entity_id = f"sensor.{uid}"
+        self._attr_unique_id = self.make_unique_id(self._api)
+        self.entity_id = f"sensor.{self._api.uid}_date"
         self.entity_description = SENSOR_SAVE_DATE
+
+    @staticmethod
+    def make_unique_id(api: KvartaCApi) -> str:
+        """Return unique id of the sensor."""
+        return f"{const.DOMAIN}.{api.uid}_date"
 
     @property
     def native_value(self) -> date:

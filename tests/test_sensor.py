@@ -91,6 +91,26 @@ async def test_sensor_options(
     assert hass.states.get(DATE) is not None
 
 
+async def test_date_sensor_removed(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    await _setup(hass, aioclient_mock, config_entry)
+    assert er.async_get(hass).async_get(DATE) is not None
+
+    hass.config_entries.async_update_entry(
+        config_entry, options={const.CONF_PREV_DATE_SENSOR: False}
+    )
+    assert await hass.config_entries.async_reload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # сенсор удален из реестра, а не оставлен недоступным
+    assert er.async_get(hass).async_get(DATE) is None
+    assert hass.states.get(DATE) is None
+    assert hass.states.get(COLD) is not None
+
+
 async def test_counter_missing(
     hass: HomeAssistant,
     aioclient_mock: AiohttpClientMocker,
