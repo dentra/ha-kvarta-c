@@ -1,8 +1,9 @@
 """kvartac integration."""
+
+import asyncio
 import logging
 
 from typing import Final
-import async_timeout
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -112,7 +113,7 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             # asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 await self.api.async_fetch()
                 return True
         except ApiAuthError as err:

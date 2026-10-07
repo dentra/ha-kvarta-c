@@ -1,4 +1,5 @@
 """Kvarta-C API"""
+
 import logging
 from typing import Final, TypedDict
 from datetime import datetime, date

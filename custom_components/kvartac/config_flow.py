@@ -1,4 +1,5 @@
 """Config flow for integration."""
+
 from __future__ import annotations
 import logging
 from typing import Any, Final, Dict
@@ -144,16 +145,11 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> OptionsFlowHandler:
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle an options flow for integration."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry):
-        """Initialize options flow."""
-        # self.entry = entry
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage options."""

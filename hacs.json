@@ -1,5 +1,6 @@
 {
     "name": "Kvarta-C",
     "render_readme": true,
-    "country": "RU"
+    "country": "RU",
+    "homeassistant": "2025.10.0"
 }

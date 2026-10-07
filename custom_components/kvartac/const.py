@@ -1,7 +1,7 @@
 """Constants for the integration."""
+
 import datetime
 from typing import Final
-
 
 DOMAIN: Final = "kvartac"
 

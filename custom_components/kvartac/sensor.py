@@ -1,4 +1,5 @@
 """Sensor implementaion routines"""
+
 import logging
 from typing import Any, Callable, Final
 from datetime import date
