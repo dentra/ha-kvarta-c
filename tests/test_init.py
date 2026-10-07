@@ -1,5 +1,6 @@
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
@@ -59,3 +60,23 @@ async def test_setup_api_error(
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
     assert config_entry.entry_id not in hass.data[const.DOMAIN]
+
+
+async def test_own_session(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    mock_site(aioclient_mock)
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # cookie входа своя у каждой записи, иначе вход другого счета
+    # может попасть между входом и отправкой показаний
+    session = hass.data[const.DOMAIN][config_entry.entry_id].api._session
+    assert session is not async_get_clientsession(hass)
+
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert session.closed

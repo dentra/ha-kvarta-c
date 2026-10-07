@@ -6,11 +6,16 @@ from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any, Final
 
+import aiohttp
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import (
+    async_create_clientsession,
+    async_get_clientsession,
+)
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -35,10 +40,14 @@ def get_update_interval(options: Mapping[str, Any]) -> timedelta:
     )
 
 
-def create_api(hass: HomeAssistant, data: Mapping[str, Any]) -> KvartaCApi:
+def create_api(
+    hass: HomeAssistant,
+    data: Mapping[str, Any],
+    session: aiohttp.ClientSession | None = None,
+) -> KvartaCApi:
     """Create api from config entry data."""
     return KvartaCApi(
-        async_get_clientsession(hass),
+        session or async_get_clientsession(hass),
         data[CONF_ORG_ID],
         data[CONF_ACC_ID],
         data[CONF_PASSWD],
@@ -63,7 +72,14 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=get_update_interval(entry.options),
         )
         _LOGGER.debug("Update interval is %s", self.update_interval)
-        self.api = create_api(hass, entry.data)
+        # своя сессия: вход другого счета в общей сессии заменит cookie
+        # между входом и отправкой показаний
+        self._session = async_create_clientsession(hass)
+        self.api = create_api(hass, entry.data, self._session)
+
+    async def async_close(self) -> None:
+        """Close own http session."""
+        await self._session.close()
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""
