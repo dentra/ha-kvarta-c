@@ -173,10 +173,11 @@ async def test_options_flow(
     assert coordinator.update_interval == timedelta(days=1, hours=2)
 
 
+@pytest.mark.parametrize("exc", [aiohttp.ClientError, TimeoutError])
 async def test_user_flow_cannot_connect(
-    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, exc: type[Exception]
 ) -> None:
-    aioclient_mock.post(LOGIN_URL, exc=aiohttp.ClientError)
+    aioclient_mock.post(LOGIN_URL, exc=exc)
     flow_id = await _start_flow(hass)
 
     result = await hass.config_entries.flow.async_configure(flow_id, USER_INPUT)

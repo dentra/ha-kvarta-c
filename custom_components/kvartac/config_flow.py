@@ -12,10 +12,15 @@ import voluptuous as vol
 from homeassistant.helpers import selector
 from homeassistant import config_entries, exceptions
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers import config_validation as cv
 
-from . import const, kvartac_api, KvartaCDataUpdateCoordinator
+from . import (
+    const,
+    kvartac_api,
+    KvartaCDataUpdateCoordinator,
+    create_api,
+    async_fetch,
+    get_update_interval,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,22 +76,17 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict[str, Any]:
         data[const.CONF_ACC_ID] = DEMO_ACC_ID
         data[const.CONF_PASSWD] = DEMO_PASSWD
 
-    api = await async_fetch(hass, data)
+    api = await async_check_login(hass, data)
 
     return {"title": api.account, "api": api}
 
 
-async def async_fetch(hass: HomeAssistant, data: Mapping[str, Any]):
+async def async_check_login(hass: HomeAssistant, data: Mapping[str, Any]):
     """Login and fetch account data."""
-    api = kvartac_api.KvartaCApi(
-        async_get_clientsession(hass),
-        data[const.CONF_ORG_ID],
-        data[const.CONF_ACC_ID],
-        data[const.CONF_PASSWD],
-    )
+    api = create_api(hass, data)
 
     try:
-        await api.async_fetch()
+        await async_fetch(api)
     except (aiohttp.ClientError, TimeoutError) as err:
         raise CannotConnect from err
 
@@ -164,7 +164,7 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
         if user_input is not None:
             data = {**entry.data, const.CONF_PASSWD: user_input[const.CONF_PASSWD]}
             try:
-                await async_fetch(self.hass, data)
+                await async_check_login(self.hass, data)
                 return self.async_update_reload_and_abort(entry, data=data)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
@@ -212,12 +212,7 @@ class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
         coordinator: KvartaCDataUpdateCoordinator | None = self.hass.data.get(
             const.DOMAIN, {}
         ).get(self.config_entry.entry_id)
-        update_interval = cv.time_period(
-            self.config_entry.options.get(
-                const.CONF_UPDATE_INTERVAL,
-                const.DEFAULT_UPDATE_INTERVAL.total_seconds(),
-            )
-        )
+        update_interval = get_update_interval(self.config_entry.options)
 
         def timedelta_to_dict(delta: timedelta) -> dict:
             hours, seconds = divmod(delta.seconds, 3600)
