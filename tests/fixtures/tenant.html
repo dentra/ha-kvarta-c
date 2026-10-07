@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div class="page-head cab-page-head"><div class="container page-head__inner">  <div class="eyebrow">Личный кабинет</div>
+  <div class="cab-account">
+    <div class="cab-account__row">
+      <span class="cab-account__label">Лицевой счёт</span>
+      <span class="cab-account__value">
+                  <span class="badge-free" style="background:#fde8e6;color:#cc3b34">демо-режим</span>
+              </span>
+    </div>
+    <div class="cab-account__row">
+      <span class="cab-account__label">Плательщик</span>
+      <span class="cab-account__value">Невский пр. д.1, кв. 13</span>
+    </div>
+    <div class="cab-account__row cab-account__row--full">
+      <span class="cab-account__label">ТСЖ "Колизей"</span>
+    </div>
+  </div>
+</div></div><section class="section section--cab"><div class="container">
+
+<div class="cab">
+  <p class="cab-note">Предыдущие показания от <b>25.03.2023</b></p>
+
+  <form action="/voda.php" method="post" onsubmit="javascript:window.alert('Данная функция в демонстрационном режиме запрещена');return false;">
+    <input type="hidden" name="action" value="tenant" />
+    <input type="hidden" name="subaction" value="tenantedit" />
+
+    <div class="meters">
+      <div class="meters__head">
+        <span class="meters__head-service">Услуга</span>
+        <span>Показания<br><span class="meters__full">предыдущие</span><span class="meters__short">пред.</span></span>
+        <span>Показания<br>текущие</span>
+        <span>Заводской<br>номер</span>
+      </div>
+              <div class="meters__row">
+          <span class="meters__name">
+            ХВС, 1          </span>
+          <span class="meters__old" data-label="Старые">
+            00161          </span>
+          <span class="meters__new" data-label="Новые">
+            <input type="text" name="service1counter1" maxlength="5" inputmode="numeric">
+          </span>
+          <span class="meters__sn" data-label="Заводской №">
+            № 33334566          </span>
+        </div>
+              <div class="meters__row">
+          <span class="meters__name">
+            ХВС, 2          </span>
+          <span class="meters__old" data-label="Старые">
+            00125          </span>
+          <span class="meters__new" data-label="Новые">
+            <input type="text" name="service1counter2" maxlength="5" inputmode="numeric">
+          </span>
+          <span class="meters__sn" data-label="Заводской №">
+            № 2043566          </span>
+        </div>
+              <div class="meters__row">
+          <span class="meters__name">
+            Отопление          </span>
+          <span class="meters__old" data-label="Старые">
+            18.9033          </span>
+          <span class="meters__new" data-label="Новые">
+            <input type="text" name="service3counter1" maxlength="7" inputmode="numeric">
+          </span>
+          <span class="meters__sn" data-label="Заводской №">
+            № 5463457          </span>
+        </div>
+              <div class="meters__row">
+          <span class="meters__name">
+            ГВС, 1          </span>
+          <span class="meters__old" data-label="Старые">
+            000234          </span>
+          <span class="meters__new" data-label="Новые">
+            <input type="text" name="service5counter1" maxlength="6" inputmode="numeric">
+          </span>
+          <span class="meters__sn" data-label="Заводской №">
+            № 04555777          </span>
+        </div>
+              <div class="meters__row">
+          <span class="meters__name">
+            ГВС, 2          </span>
+          <span class="meters__old" data-label="Старые">
+            000089          </span>
+          <span class="meters__new" data-label="Новые">
+            <input type="text" name="service5counter2" maxlength="6" inputmode="numeric">
+          </span>
+          <span class="meters__sn" data-label="Заводской №">
+            № 04555788          </span>
+        </div>
+          </div>
+
+    <button type="submit" name="put" value="Сохранить" class="btn btn--brand" style="margin-top:20px">Сохранить</button>
+  </form>
+
+  <p class="cab-note cab-note--muted">Нет услуг и счётчиков? Обратитесь в <b>бухгалтерию вашей организации</b>. Телефоны бухгалтерии обычно указаны в платежном документе.</p>
+</div>
+</div></section>
+</body>
+</html>
