@@ -117,13 +117,14 @@ class KvartaCApi:
     def _parse_html(self, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
 
-        # после обновления дизайна сайта от 2026 года
-        rows = soup.select("div.meters__row")
-        if len(rows) == 0:
+        # после обновления дизайна сайта от 2026 года,
+        # блок с лицевым счетом есть только у авторизованного пользователя
+        if soup.select_one("div.cab-account") is None:
             return False
 
         self._parse_account(soup)
 
+        rows = soup.select("div.meters__row")
         _LOGGER.debug("Found %d counters", len(rows))
 
         counters = self.counters
@@ -131,9 +132,9 @@ class KvartaCApi:
         for row in rows:
             self._parse_counter(row)
 
-        if len(self.counters) == 0:
+        if len(rows) > 0 and len(self.counters) == 0:
             self.counters = counters
-            return False
+            raise ApiError("Can't parse counters")
 
         return True
 
