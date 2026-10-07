@@ -6,9 +6,9 @@
     ],
     "config_flow": true,
     "dependencies": [],
-    "documentation": "https://github.com/dentra/homeassistant-kvartac",
+    "documentation": "https://github.com/dentra/ha-kvarta-c",
     "iot_class": "cloud_polling",
-    "issue_tracker": "https://github.com/dentra/homeassistant-kvartac/issues",
+    "issue_tracker": "https://github.com/dentra/ha-kvarta-c/issues",
     "requirements": [
         "beautifulsoup4"
     ],
