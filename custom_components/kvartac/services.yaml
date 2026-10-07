@@ -1,22 +1,39 @@
 update_value:
   name: Update counter value
-  description: Send new counter readings.
-  target:
-    entity:
-      integration: kvartac
-      domain: sensor
-      device_class:
-        - gas
-        - volume
-        - energy
+  description: Send counter readings of one account in one request.
   fields:
-    value:
-      name: Value
-      description: The new counter readings to send. Must be greater than the previous one.
-      example: "48"
+    values:
+      name: Values
+      description: Readings per counter sensor.
       required: true
       selector:
-        number:
-          min: 1
-          max: 999999
-          mode: box
+        object:
+          multiple: true
+          label_field: entity_id
+          description_field: value
+          translation_key: values
+          fields:
+            entity_id:
+              required: true
+              selector:
+                entity:
+                  filter:
+                    integration: kvartac
+                    domain: sensor
+                    device_class:
+                      - gas
+                      - volume
+                      - energy
+            value:
+              required: true
+              selector:
+                number:
+                  min: 1
+                  max: 999999
+                  mode: box
+    throws:
+      name: Fail on error
+      description: Fail the action if readings of any counter were not sent. When the action response is stored in a variable, errors are returned in the response.
+      default: true
+      selector:
+        boolean:

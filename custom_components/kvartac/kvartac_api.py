@@ -172,14 +172,14 @@ class KvartaCApi:
             _LOGGER.debug("Unauthorized page: %s", content)
             raise ApiAuthError("Authentication failed")
 
-    async def _async_update(self, counter_id: str, value: int):
+    async def _async_update(self, values: dict[str, int]):
         resp = await self._session.post(
             self._LOGIN_URL,
             data={
                 "action": "tenant",
                 "subaction": "tenantedit",
                 "usertype": "tenant",
-                counter_id: value,
+                **values,
             },
         )
 
@@ -195,10 +195,10 @@ class KvartaCApi:
         await self._async_login()
         await self._async_fetch()
 
-    async def async_update(self, counter_id: str, value: int):
-        """Login, update and fetch new counter value"""
+    async def async_update(self, values: dict[str, int]):
+        """Login, update and fetch new counter values in one request"""
         await self._async_login()
-        await self._async_update(counter_id, value)
+        await self._async_update(values)
         await self._async_fetch()
 
     def parse(self, session) -> bool:

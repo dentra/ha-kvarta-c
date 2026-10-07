@@ -1,10 +1,9 @@
 """Sensor implementaion routines"""
 
 import logging
+import math
 from typing import Any, Callable, Final
 from datetime import date
-
-import voluptuous as vol
 
 from homeassistant.components.sensor import (
     SensorEntity,
@@ -15,20 +14,22 @@ from homeassistant.components.sensor import (
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.helpers import entity_platform, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType
 
 from homeassistant.const import UnitOfVolume, UnitOfEnergy
 
 from .kvartac_api import KvartaCApi
 from . import const
+from .const import ErrorCode, make_result
 from .coordinator import KvartaCDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+
+MAX_VALUE: Final = 999999
 
 SENSOR_ELECTRICITY: Final = SensorEntityDescription(
     key="electricity",
@@ -78,6 +79,18 @@ SENSOR_SAVE_DATE: Final = SensorEntityDescription(
 )
 
 
+def device_info(api: KvartaCApi, entry_id: str) -> DeviceInfo:
+    """Return device info of the config entry."""
+    return DeviceInfo(
+        entry_type=DeviceEntryType.SERVICE,
+        identifiers={(const.DOMAIN, entry_id)},
+        configuration_url=KvartaCApi.BASE_URL,
+        name=api.account,
+        model=api.account,
+        manufacturer=api.organisation,
+    )
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: Callable
 ):
@@ -100,44 +113,17 @@ async def async_setup_entry(
         if entity_id := registry.async_get_entity_id("sensor", const.DOMAIN, unique_id):
             registry.async_remove(entity_id)
 
-    min_value = None
-    for counter in coordinator.api.counters.values():
-        value = counter[KvartaCApi.COUNTER_VALUE]
-        min_value = value if min_value is None else min(min_value, value)
-    _LOGGER.debug("Minimal sevice value is %s", min_value)
-
-    entity_platform.async_get_current_platform().async_register_entity_service(
-        const.SERVICE_UPDATE_VALUE_CODE,
-        {
-            vol.Required("value"): vol.All(
-                vol.Coerce(int),
-                vol.Range(min=min_value, max=999999, max_included=True),
-            ),
-        },
-        _KvartaCSensor.async_update_value.__name__,
-    )
-
 
 class _KvartaCSensor(CoordinatorEntity[KvartaCDataUpdateCoordinator], SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: KvartaCDataUpdateCoordinator, entry_id: str):
         super().__init__(coordinator)
-        self._attr_device_info = DeviceInfo(
-            entry_type=DeviceEntryType.SERVICE,
-            identifiers={(const.DOMAIN, entry_id)},
-            configuration_url=KvartaCApi.BASE_URL,
-            name=self.coordinator.api.account,
-            model=self.coordinator.api.account,
-            manufacturer=self.coordinator.api.organisation,
-        )
+        self._attr_device_info = device_info(coordinator.api, entry_id)
 
     @property
     def _api(self) -> KvartaCApi:
         return self.coordinator.api
-
-    async def async_update_value(self, value: int):
-        """nothing to do with RO valaue"""
 
 
 class KvartaCDiagnosticSensor(_KvartaCSensor):
@@ -205,6 +191,11 @@ class KvartaCCounterSensor(_KvartaCSensor):
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
+    def counter_id(self) -> str:
+        """Return counter id of the site form."""
+        return self._counter_id
+
+    @property
     def _counter(self) -> dict[str, Any] | None:
         # счетчик может пропасть из ответа, если его не удалось распарсить
         return self._api.counters.get(self._counter_id)
@@ -241,17 +232,17 @@ class KvartaCCounterSensor(_KvartaCSensor):
     def __str__(self):
         return f"{self._counter}"
 
-    async def async_update_value(self, value: int):
+    def check_value(self, value: int) -> dict | None:
+        """Return a service response error if the value can't be sent."""
         if not self.available:
-            raise ServiceValidationError(f"Счетчик {self._counter_id} недоступен")
-
-        if value <= self.native_value:
-            raise ServiceValidationError(
-                f"Новое значение {value} не больше предыдущего {self.state}"
-            )
-
-        _LOGGER.debug("[%s]: Updating to %d", self.name, value)
-        await self._api.async_update(self._counter_id, value)
-
-        # api уже перечитал страницу, повторный запрос не нужен
-        self.coordinator.async_set_updated_data(True)
+            msg = f"Счетчик {self._counter_id} недоступен"
+            return make_result(ErrorCode.UNAVAILABLE, msg)
+        # неизменившиеся показания можно передать повторно, передаются
+        # только целые, поэтому дробная часть прежних не учитывается
+        if value < math.floor(self.native_value):
+            msg = f"Новое значение {value} меньше предыдущего {self.state}"
+            return make_result(ErrorCode.VALUE, msg)
+        if value > MAX_VALUE:
+            msg = f"Новое значение {value} больше {MAX_VALUE}"
+            return make_result(ErrorCode.VALUE, msg)
+        return None

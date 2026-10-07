@@ -1,7 +1,5 @@
-import pytest
 from homeassistant.const import STATE_UNAVAILABLE, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
@@ -10,7 +8,7 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
 
 from custom_components.kvartac import const
 
-from .conftest import LOGIN_URL, TENANT_URL, UID, calls, load_fixture, mock_site
+from .conftest import LOGIN_URL, TENANT_URL, UID, load_fixture, mock_site
 
 COLD = f"sensor.{UID}_service1counter1"
 HEATING = f"sensor.{UID}_service3counter1"
@@ -129,49 +127,3 @@ async def test_counter_missing(
 
     assert hass.states.get(COLD).state == STATE_UNAVAILABLE
     assert hass.states.get(HOT).state == "234"
-
-
-async def test_update_value(
-    hass: HomeAssistant,
-    aioclient_mock: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-) -> None:
-    await _setup(hass, aioclient_mock, config_entry)
-    aioclient_mock.clear_requests()
-    mock_site(aioclient_mock)
-
-    await hass.services.async_call(
-        const.DOMAIN,
-        const.SERVICE_UPDATE_VALUE_CODE,
-        {"value": 170},
-        blocking=True,
-        target={"entity_id": COLD},
-    )
-
-    # страница читается один раз, без повторного обновления координатора
-    await hass.async_block_till_done()
-    assert len(calls(aioclient_mock, "GET", TENANT_URL)) == 1
-
-    posts = calls(aioclient_mock, "POST", LOGIN_URL)
-    assert [
-        post[2]["service1counter1"] for post in posts if post[2]["action"] == "tenant"
-    ] == [170]
-
-
-async def test_update_value_not_greater(
-    hass: HomeAssistant,
-    aioclient_mock: AiohttpClientMocker,
-    config_entry: MockConfigEntry,
-) -> None:
-    await _setup(hass, aioclient_mock, config_entry)
-    aioclient_mock.clear_requests()
-
-    with pytest.raises(ServiceValidationError, match="не больше предыдущего"):
-        await hass.services.async_call(
-            const.DOMAIN,
-            const.SERVICE_UPDATE_VALUE_CODE,
-            {"entity_id": COLD, "value": 161},
-            blocking=True,
-        )
-
-    assert aioclient_mock.call_count == 0

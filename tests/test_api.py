@@ -190,7 +190,7 @@ async def test_update(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) 
     mock_site(aioclient_mock)
     api = _api(hass)
 
-    await api.async_update("service1counter1", 170)
+    await api.async_update({"service1counter1": 170, "service5counter1": 250})
 
     login = calls(aioclient_mock, "POST", LOGIN_URL)
     assert len(login) == 2
@@ -199,5 +199,6 @@ async def test_update(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) 
         "subaction": "tenantedit",
         "usertype": "tenant",
         "service1counter1": 170,
+        "service5counter1": 250,
     }
     assert len(calls(aioclient_mock, "GET", TENANT_URL)) == 1

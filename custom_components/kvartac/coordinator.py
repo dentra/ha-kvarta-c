@@ -4,10 +4,9 @@ import asyncio
 import logging
 from collections.abc import Mapping
 from datetime import timedelta
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 import aiohttp
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -25,6 +24,9 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MESSAGE_SUCCESS,
+    ErrorCode,
+    make_result,
 )
 from .kvartac_api import ApiAuthError, ApiError, KvartaCApi
 
@@ -60,6 +62,16 @@ async def async_fetch(api: KvartaCApi) -> None:
         await api.async_fetch()
 
 
+class CounterEntity(Protocol):
+    """Counter sensor readings are sent to."""
+
+    entity_id: str
+    counter_id: str
+
+    def check_value(self, value: int) -> dict | None:
+        """Return a service response error if the value can't be sent."""
+
+
 # https://developers.home-assistant.io/docs/integration_fetching_data/#polling-api-endpoints
 class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
     """Kvarta-C data update coordinator."""
@@ -76,10 +88,53 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
         # между входом и отправкой показаний
         self._session = async_create_clientsession(hass)
         self.api = create_api(hass, entry.data, self._session)
+        # проверка и отправка не должны пересекаться с другой отправкой
+        self._send_lock = asyncio.Lock()
 
     async def async_close(self) -> None:
         """Close own http session."""
         await self._session.close()
+
+    async def async_send_values(
+        self, readings: list[tuple[CounterEntity, int]]
+    ) -> list[dict]:
+        """Check and send readings in one request, errors are returned as results.
+
+        Counters failed the check are skipped, others are still sent.
+        """
+        async with self._send_lock:
+            results = []
+            values: dict[str, int] = {}
+            entity_ids = []
+            for entity, value in readings:
+                if error := entity.check_value(value):
+                    results.append({"entity_ids": [entity.entity_id]} | error)
+                else:
+                    values[entity.counter_id] = value
+                    entity_ids.append(entity.entity_id)
+            if values:
+                response = await self._async_send(values)
+                results.append({"entity_ids": entity_ids} | response)
+            return results
+
+    async def _async_send(self, values: dict[str, int]) -> dict:
+        _LOGGER.debug("Updating %s", values)
+        try:
+            async with asyncio.timeout(API_TIMEOUT):
+                await self.api.async_update(values)
+        except ApiAuthError:
+            # из сервиса reauth сам не стартует
+            self.config_entry.async_start_reauth(self.hass)
+            return make_result(ErrorCode.AUTH, "Ошибка аутентификации")
+        except ApiError as err:
+            msg = f"Ошибка API: {err}" if str(err) else "Ошибка API"
+            return make_result(ErrorCode.API, msg)
+        except (aiohttp.ClientError, TimeoutError) as err:
+            return make_result(ErrorCode.CONNECTION, f"Ошибка соединения: {err!r}")
+
+        # api уже перечитал страницу, повторный запрос не нужен
+        self.async_set_updated_data(True)
+        return make_result(ErrorCode.SUCCESS, MESSAGE_SUCCESS, payload=values)
 
     async def _async_update_data(self):
         """Fetch data from API endpoint."""

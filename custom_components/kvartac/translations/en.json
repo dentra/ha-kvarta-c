@@ -46,12 +46,24 @@
     "services": {
         "update_value": {
             "name": "Update counter value",
-            "description": "Send new counter readings.",
+            "description": "Send counter readings, readings of one account are sent in one request.",
             "fields": {
-                "value": {
-                    "name": "Value",
-                    "description": "The new counter readings to send. Must be greater than the previous one."
+                "values": {
+                    "name": "Values",
+                    "description": "Readings of several counters. The new value must not be less than the previous one."
+                },
+                "throws": {
+                    "name": "Fail on error",
+                    "description": "Fail the action if readings of any counter were not sent. When the action response is stored in a variable, errors are returned in the response."
                 }
+            }
+        }
+    },
+    "selector": {
+        "values": {
+            "fields": {
+                "entity_id": "Counter",
+                "value": "Value"
             }
         }
     }
