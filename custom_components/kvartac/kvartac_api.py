@@ -196,9 +196,12 @@ class KvartaCApi:
         await self._async_fetch()
 
     async def async_update(self, values: dict[str, int]):
-        """Login, update and fetch new counter values in one request"""
+        """Login and update counter values in one request"""
         await self._async_login()
         await self._async_update(values)
+
+    async def async_refetch(self) -> None:
+        """Fetch new data in the current login session"""
         await self._async_fetch()
 
     def parse(self, session) -> bool:

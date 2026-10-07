@@ -265,6 +265,37 @@ async def test_update_value_target_unavailable(
     assert _sent(aioclient_mock) == [{"service1counter1": 250}]
 
 
+async def test_values_refetch_error(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(LOGIN_URL, text="")
+    aioclient_mock.get(TENANT_URL, exc=aiohttp.ClientConnectionError())
+
+    # показания уже ушли, ошибка чтения страницы не считается неудачей
+    response = await _call(hass, {"values": [{"entity_id": COLD, "value": 170}]})
+
+    assert response["code"] == 0
+    assert _sent(aioclient_mock) == [{"service1counter1": 170}]
+
+
+async def test_values_refetch_auth_error(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    aioclient_mock.clear_requests()
+    aioclient_mock.post(LOGIN_URL, text="")
+    aioclient_mock.get(TENANT_URL, text="<html></html>")
+
+    # без входа сайт отвечает 200, но показания не принимает
+    response = await _call(hass, {"values": [{"entity_id": COLD, "value": 170}]})
+
+    assert response["code"] == const.ErrorCode.AUTH
+    await hass.async_block_till_done()
+    assert any(config_entry.async_get_active_flows(hass, {"reauth"}))
+
+
 @pytest.mark.parametrize(
     ("data", "target"),
     [

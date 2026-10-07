@@ -201,4 +201,9 @@ async def test_update(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) 
         "service1counter1": 170,
         "service5counter1": 250,
     }
+    assert not calls(aioclient_mock, "GET", TENANT_URL)
+
+    await api.async_refetch()
+
+    assert len(calls(aioclient_mock, "POST", LOGIN_URL)) == 2
     assert len(calls(aioclient_mock, "GET", TENANT_URL)) == 1

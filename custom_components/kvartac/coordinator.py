@@ -88,12 +88,9 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
         # между входом и отправкой показаний
         self._session = async_create_clientsession(hass)
         self.api = create_api(hass, entry.data, self._session)
-        # проверка и отправка не должны пересекаться с другой отправкой
-        self._send_lock = asyncio.Lock()
-
-    async def async_close(self) -> None:
-        """Close own http session."""
-        await self._session.close()
+        # запросы к сайту не должны пересекаться: другой вход в той же
+        # сессии может попасть между входом и отправкой показаний
+        self._lock = asyncio.Lock()
 
     async def async_send_values(
         self, readings: list[tuple[CounterEntity, int]]
@@ -102,7 +99,7 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
 
         Counters failed the check are skipped, others are still sent.
         """
-        async with self._send_lock:
+        async with self._lock:
             results = []
             values: dict[str, int] = {}
             entity_ids = []
@@ -132,8 +129,20 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
         except (aiohttp.ClientError, TimeoutError) as err:
             return make_result(ErrorCode.CONNECTION, f"Ошибка соединения: {err!r}")
 
-        # api уже перечитал страницу, повторный запрос не нужен
-        self.async_set_updated_data(True)
+        try:
+            async with asyncio.timeout(API_TIMEOUT):
+                await self.api.async_refetch()
+        except ApiAuthError:
+            # вход и отправка проверяют только статус ответа, без входа
+            # сайт молча отбрасывает показания
+            self.config_entry.async_start_reauth(self.hass)
+            return make_result(ErrorCode.AUTH, "Ошибка аутентификации")
+        except (ApiError, aiohttp.ClientError, TimeoutError) as err:
+            # показания уже переданы, данные перечитаются после отправки
+            _LOGGER.warning("Не удалось перечитать показания: %r", err)
+            self.hass.async_create_task(self.async_request_refresh())
+        else:
+            self.async_set_updated_data(True)
         return make_result(ErrorCode.SUCCESS, MESSAGE_SUCCESS, payload=values)
 
     async def _async_update_data(self):
@@ -141,7 +150,8 @@ class KvartaCDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             # asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            await async_fetch(self.api)
+            async with self._lock:
+                await async_fetch(self.api)
             return True
         except ApiAuthError as err:
             # Raising ConfigEntryAuthFailed will cancel future updates
