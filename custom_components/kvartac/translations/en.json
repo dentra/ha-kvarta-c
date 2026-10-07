@@ -40,7 +40,22 @@
                     "prev_date_sensor": "Additional date sensor"
                 },
                 "description": "{acc_info}\n{org_info}"
+            },
+            "links": {
+                "title": "Readings sources",
+                "description": "Link counters with sensors of other integrations to send their readings with the \"Send readings of linked sensors\" action or the \"Send readings\" button. Only integers are sent, the fractional part is dropped.\n\n{preview}",
+                "data": {
+                    "links": "Links"
+                }
+            },
+            "no_counters": {
+                "title": "Readings sources",
+                "description": "Counters of this account are not loaded yet, so they can't be linked with sensors. Saved links are kept. Set up links once the integration is loaded."
             }
+        },
+        "error": {
+            "duplicate_link": "The counter is already linked to another source",
+            "missing_meter": "Linked meter not found — replace or remove the link"
         }
     },
     "services": {
@@ -57,13 +72,36 @@
                     "description": "Fail the action if readings of any counter were not sent. When the action response is stored in a variable, errors are returned in the response."
                 }
             }
+        },
+        "send_linked": {
+            "name": "Send readings of linked sensors",
+            "description": "Send counter readings from the linked sensors configured in the integration options.",
+            "fields": {
+                "throws": {
+                    "name": "Fail on error",
+                    "description": "Fail the action if readings of any counter were not sent. When the action response is stored in a variable, errors are returned in the response."
+                }
+            }
         }
     },
     "selector": {
+        "links": {
+            "fields": {
+                "entity_id": "Counter",
+                "source": "Source"
+            }
+        },
         "values": {
             "fields": {
                 "entity_id": "Counter",
                 "value": "Value"
+            }
+        }
+    },
+    "entity": {
+        "button": {
+            "send_linked": {
+                "name": "Send readings"
             }
         }
     }

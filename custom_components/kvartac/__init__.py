@@ -15,7 +15,7 @@ from .services import async_setup_services
 _LOGGER = logging.getLogger(__name__)
 
 
-PLATFORMS: Final = ["sensor"]
+PLATFORMS: Final = ["sensor", "button"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

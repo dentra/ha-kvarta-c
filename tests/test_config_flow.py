@@ -164,6 +164,8 @@ async def test_options_flow(
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], options
     )
+    assert result["step_id"] == "links"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY

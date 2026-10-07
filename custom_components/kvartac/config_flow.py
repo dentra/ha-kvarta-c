@@ -9,8 +9,10 @@ from datetime import timedelta
 import aiohttp
 import voluptuous as vol
 
-from homeassistant.helpers import selector
+from homeassistant.helpers import entity_registry as er, selector
 from homeassistant import config_entries, exceptions
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, callback
 
 from . import const, kvartac_api
@@ -20,12 +22,20 @@ from .coordinator import (
     async_fetch,
     get_update_interval,
 )
+from .services import linked_preview
 
 _LOGGER = logging.getLogger(__name__)
 
 DEMO_ACC_ID: Final = "000000000"
 DEMO_ORG_ID: Final = "0000"
 DEMO_PASSWD: Final = "demo"
+
+# счетчики, в которые передаются показания, как в фильтре services.yaml
+_COUNTER_DEVICE_CLASSES: Final = (
+    SensorDeviceClass.GAS,
+    SensorDeviceClass.VOLUME,
+    SensorDeviceClass.ENERGY,
+)
 
 
 def _marker(
@@ -202,10 +212,15 @@ class ConfigFlowHandler(config_entries.ConfigFlow, domain=const.DOMAIN):
 class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
     """Handle an options flow for integration."""
 
+    _options: dict[str, Any]
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            self._options = user_input
+            if not self._counters():
+                return await self.async_step_no_counters()
+            return await self.async_step_links()
 
         # координатора нет, если запись не загрузилась
         coordinator: KvartaCDataUpdateCoordinator | None = self.hass.data.get(
@@ -253,6 +268,111 @@ class OptionsFlowHandler(config_entries.OptionsFlowWithReload):
                 ),
                 "org_info": coordinator.api.organisation if coordinator else "",
             },
+        )
+
+    async def async_step_no_counters(self, user_input: dict[str, Any] | None = None):
+        """Explain why links can't be set up yet."""
+        if user_input is None:
+            # пустой include_entities разрешил бы выбрать любую сущность
+            return self.async_show_form(step_id="no_counters")
+
+        options = dict(self._options)
+        if links := self.config_entry.options.get(const.CONF_LINKS):
+            options[const.CONF_LINKS] = links
+        return self.async_create_entry(title="", data=options)
+
+    async def async_step_links(self, user_input: dict[str, Any] | None = None):
+        """Manage linked source sensors."""
+        errors = {}
+        if user_input is not None:
+            links = user_input.get(const.CONF_LINKS) or []
+            counters = [link[ATTR_ENTITY_ID] for link in links]
+            if len(counters) != len(set(counters)):
+                errors["base"] = "duplicate_link"
+            elif not set(counters) <= set(self._counters()):
+                errors["base"] = "missing_meter"
+            else:
+                options = dict(self._options)
+                if links:
+                    options[const.CONF_LINKS] = links
+                return self.async_create_entry(title="", data=options)
+
+        return self.async_show_form(
+            step_id="links",
+            data_schema=vol.Schema(
+                {
+                    # без default: иначе пустое поле вернет удаленные связи
+                    optional(
+                        const.CONF_LINKS,
+                        user_input or dict(self.config_entry.options),
+                        [],
+                    ): self._links_selector(),
+                }
+            ),
+            description_placeholders={
+                "preview": linked_preview(self.hass, self.config_entry.entry_id)
+            },
+            errors=errors,
+        )
+
+    def _entities(self) -> list[er.RegistryEntry]:
+        registry = er.async_get(self.hass)
+        return [
+            reg
+            for entry in self.hass.config_entries.async_entries(const.DOMAIN)
+            for reg in er.async_entries_for_config_entry(registry, entry.entry_id)
+        ]
+
+    def _counters(self) -> list[str]:
+        registry = er.async_get(self.hass)
+        return [
+            reg.entity_id
+            for reg in er.async_entries_for_config_entry(
+                registry, self.config_entry.entry_id
+            )
+            if reg.domain == "sensor"
+            and reg.original_device_class in _COUNTER_DEVICE_CLASSES
+            # отключенному счетчику показания не передать
+            and not reg.disabled
+        ]
+
+    def _links_selector(self) -> selector.ObjectSelector:
+        # устаревшие счетчики связей должны пройти селектор, их отсекает проверка
+        counters = list(
+            dict.fromkeys(
+                self._counters()
+                + [
+                    link[ATTR_ENTITY_ID]
+                    for link in self.config_entry.options.get(const.CONF_LINKS, [])
+                ]
+            )
+        )
+        return selector.ObjectSelector(
+            selector.ObjectSelectorConfig(
+                multiple=True,
+                label_field=ATTR_ENTITY_ID,
+                description_field=const.CONF_SOURCE,
+                translation_key=const.CONF_LINKS,
+                fields={
+                    ATTR_ENTITY_ID: {
+                        "required": True,
+                        "selector": selector.EntitySelector(
+                            selector.EntitySelectorConfig(include_entities=counters)
+                        ),
+                    },
+                    const.CONF_SOURCE: {
+                        "required": True,
+                        "selector": selector.EntitySelector(
+                            selector.EntitySelectorConfig(
+                                domain=["sensor", "input_number"],
+                                exclude_entities=[
+                                    reg.entity_id for reg in self._entities()
+                                ],
+                            )
+                        ),
+                    },
+                },
+            )
         )
 
 

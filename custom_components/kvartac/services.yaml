@@ -37,3 +37,13 @@ update_value:
       default: true
       selector:
         boolean:
+send_linked:
+  name: Send readings of linked sensors
+  description: Send counter readings from the linked sensors configured in the integration options.
+  fields:
+    throws:
+      name: Fail on error
+      description: Fail the action if readings of any counter were not sent. When the action response is stored in a variable, errors are returned in the response.
+      default: true
+      selector:
+        boolean:

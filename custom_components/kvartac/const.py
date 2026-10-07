@@ -16,6 +16,10 @@ CONF_PREV_DATE_SENSOR: Final = "prev_date_sensor"
 DEFAULT_UPDATE_INTERVAL: Final = datetime.timedelta(hours=12)
 
 SERVICE_UPDATE_VALUE_CODE: Final = "update_value"
+SERVICE_SEND_LINKED: Final = "send_linked"
+
+CONF_LINKS: Final = "links"
+CONF_SOURCE: Final = "source"
 
 MESSAGE_SUCCESS: Final = "Показания переданы"
 
@@ -27,6 +31,9 @@ class ErrorCode(IntEnum):
     CONNECTION = -1
     UNAVAILABLE = -2
     VALUE = -3
+    SOURCE = -4
+    UNIT = -5
+    NOT_FOUND = -6
     API = -7
     AUTH = -8
 
