@@ -123,8 +123,9 @@ async def test_update_value(
     await hass.services.async_call(
         const.DOMAIN,
         const.SERVICE_UPDATE_VALUE_CODE,
-        {"entity_id": COLD, "value": 170},
+        {"value": 170},
         blocking=True,
+        target={"entity_id": COLD},
     )
 
     # страница читается один раз, без повторного обновления координатора
