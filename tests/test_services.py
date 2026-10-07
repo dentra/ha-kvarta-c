@@ -2,6 +2,8 @@ import aiohttp
 import pytest
 import voluptuous as vol
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import device_registry as dr
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
@@ -146,6 +148,8 @@ async def test_values_less_skips_counter(
         {"values": [{"entity_id": "sensor.unknown", "value": 170}]},
         {"values": [{"entity_id": DATE, "value": 170}]},
         {"entity_id": DATE, "value": 170},
+        {"entity_id": [COLD, "sensor.unknown"], "value": 170},
+        {"entity_id": "none", "value": 170},
         {
             "values": [
                 {"entity_id": COLD, "value": 170},
@@ -160,6 +164,8 @@ async def test_values_less_skips_counter(
         "unknown",
         "date",
         "date_target",
+        "unknown_target",
+        "none_target",
         "duplicate",
     ],
 )
@@ -206,3 +212,95 @@ async def test_values_connection_error(
 
     assert response["code"] == -1
     assert response["results"][0]["entity_ids"] == [COLD]
+
+
+@pytest.mark.parametrize(
+    "target",
+    [{"entity_id": "all"}, "device"],
+    ids=["all", "device"],
+)
+async def test_update_value_target_skips_date(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+    target: dict | str,
+) -> None:
+    if target == "device":
+        registry = dr.async_get(hass)
+        (device,) = dr.async_entries_for_config_entry(registry, config_entry.entry_id)
+        target = {"device_id": device.id}
+
+    response = await _call(hass, {"value": 250}, target=target)
+
+    # сенсор даты не мешает передаче по всем счетчикам
+    assert response["code"] == 0
+    assert DATE not in response["results"][0]["entity_ids"]
+    assert _sent(aioclient_mock) == [
+        {
+            "service1counter1": 250,
+            "service1counter2": 250,
+            "service3counter1": 250,
+            "service5counter1": 250,
+            "service5counter2": 250,
+        }
+    ]
+
+
+async def test_update_value_target_unavailable(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    coordinator = hass.data[const.DOMAIN][config_entry.entry_id]
+    del coordinator.api.counters["service5counter1"]
+
+    response = await _call(
+        hass, {"value": 250}, target={"entity_id": [COLD, HOT]}, return_response=True
+    )
+
+    codes = {result["entity_ids"][0]: result["code"] for result in response["results"]}
+    assert codes[HOT] != 0
+    assert codes[COLD] == 0
+    assert "недоступен" in response["message"]
+    assert _sent(aioclient_mock) == [{"service1counter1": 250}]
+
+
+@pytest.mark.parametrize(
+    ("data", "target"),
+    [
+        ({"value": 250}, {"entity_id": COLD}),
+        ({"value": "250"}, {"entity_id": [COLD, HOT]}),
+        ({"entity_id": [COLD, HOT], "value": 250}, None),
+        ({"value": 250}, "area"),
+    ],
+    ids=["entity", "entities_value_str", "data_entity_id", "area"],
+)
+async def test_update_value_legacy_format(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    config_entry: MockConfigEntry,
+    data: dict,
+    target: dict | str | None,
+) -> None:
+    # прежний формат из README: target + value, без ответа
+    if target == "area":
+        area = ar.async_get(hass).async_create("Квартира")
+        registry = dr.async_get(hass)
+        (device,) = dr.async_entries_for_config_entry(registry, config_entry.entry_id)
+        registry.async_update_device(device.id, area_id=area.id)
+        target = {"area_id": area.id}
+        expected = {
+            "service1counter1": 250,
+            "service1counter2": 250,
+            "service3counter1": 250,
+            "service5counter1": 250,
+            "service5counter2": 250,
+        }
+    elif COLD in str(target) and HOT not in str(target):
+        expected = {"service1counter1": 250}
+    else:
+        expected = {"service1counter1": 250, "service5counter1": 250}
+
+    assert await _call(hass, data, target=target, return_response=False) is None
+
+    assert _sent(aioclient_mock) == [expected]

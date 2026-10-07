@@ -6,7 +6,11 @@ from typing import Final
 
 import voluptuous as vol
 from homeassistant.components import sensor
-from homeassistant.const import ATTR_ENTITY_ID, ATTR_UNIT_OF_MEASUREMENT
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    ATTR_UNIT_OF_MEASUREMENT,
+    ENTITY_MATCH_ALL,
+)
 from homeassistant.core import (
     HomeAssistant,
     ServiceCall,
@@ -16,6 +20,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_platform
+from homeassistant.helpers import service as service_helper
 from homeassistant.util.unit_conversion import EnergyConverter, VolumeConverter
 
 from . import const
@@ -134,17 +139,24 @@ def _values_readings(hass: HomeAssistant, service_call: ServiceCall) -> _Reading
 
 
 async def _target_readings(hass: HomeAssistant, service_call: ServiceCall) -> _Readings:
+    counters = _counter_sensors(hass)
+    explicit = service_call.data.get(ATTR_ENTITY_ID)
+    if explicit == ENTITY_MATCH_ALL:
+        selected = set(counters)
+    else:
+        explicit = explicit if isinstance(explicit, list) else []
+        if set(explicit) & (_sensors(hass).keys() - counters.keys()):
+            raise ServiceValidationError("Цель должна быть сенсором показаний")
+        for entity_id in explicit:
+            if entity_id not in counters and hass.states.get(entity_id) is None:
+                raise ServiceValidationError(f"{entity_id} не найден")
+        # недоступные счетчики не отбрасываются, ошибку вернет check_value
+        selected = await service_helper.async_extract_entity_ids(service_call)
     entities = [
-        entity
-        for platform in entity_platform.async_get_platforms(hass, const.DOMAIN)
-        if platform.domain == sensor.DOMAIN
-        for entity in await platform.async_extract_from_service(service_call)
+        entity for entity_id, entity in counters.items() if entity_id in selected
     ]
     if not entities:
         raise ServiceValidationError("Ни одной цели не выбрано")
-    for entity in entities:
-        if not isinstance(entity, KvartaCCounterSensor):
-            raise ServiceValidationError("Цель должна быть сенсором показаний")
     return [(entity, service_call.data[_VALUE]) for entity in entities]
 
 
@@ -262,11 +274,18 @@ def _source_value(hass: HomeAssistant, entity: KvartaCCounterSensor, link: dict)
     return reading
 
 
-def _counter_sensors(hass: HomeAssistant) -> dict[str, KvartaCCounterSensor]:
+def _sensors(hass: HomeAssistant) -> dict[str, sensor.SensorEntity]:
     return {
         entity.entity_id: entity
         for platform in entity_platform.async_get_platforms(hass, const.DOMAIN)
         if platform.domain == sensor.DOMAIN
         for entity in platform.entities.values()
+    }
+
+
+def _counter_sensors(hass: HomeAssistant) -> dict[str, KvartaCCounterSensor]:
+    return {
+        entity_id: entity
+        for entity_id, entity in _sensors(hass).items()
         if isinstance(entity, KvartaCCounterSensor)
     }
